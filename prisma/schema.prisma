@@ -1,0 +1,144 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Usuario {
+  id        String    @id @default(uuid())
+  nombre    String
+  email     String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  viajes    Viaje[]
+
+  @@map("usuarios")
+}
+
+model Viaje {
+  id                   String                 @id @default(uuid())
+  usuarioId            String?
+  titulo               String
+  descripcion          String?
+  destino              String
+  fechaInicio          DateTime
+  fechaFin             DateTime
+  presupuestoTotal     Float                  @default(0)
+  monedaBase           String                 @default("COP")
+  monedaReferencia     String                 @default("USD")
+  monedaLocal          String                 @default("USD")
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  deletedAt            DateTime?
+
+  usuario              Usuario?               @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  itinerarios          EventoItinerario[]
+  gastos               Gasto[]
+  documentos           DocumentoBoveda[]
+  presupuestos         PresupuestoCategoria[]
+
+  @@map("viajes")
+}
+
+model PresupuestoCategoria {
+  id         String    @id @default(uuid())
+  viajeId    String
+  categoria  String
+  limite     Float     @default(0)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  viaje      Viaje     @relation(fields: [viajeId], references: [id], onDelete: Cascade)
+
+  @@unique([viajeId, categoria])
+  @@map("presupuestos_categoria")
+}
+
+model EventoItinerario {
+  id            String    @id @default(uuid())
+  viajeId       String
+  titulo        String
+  tipo          String    // vuelo, hotel, atraccion, transporte, comida, otro
+  fechaInicio   DateTime
+  fechaFin      DateTime
+  ubicacion           String?
+  latitud             Float?
+  longitud            Float?
+  costo               Float?
+  moneda              String?
+  notas               String?
+
+  // Datos logísticos de vuelo / trayecto
+  ciudadOrigen        String?
+  paisOrigen          String?
+  aeropuertoOrigen    String?
+  ciudadDestino       String?
+  paisDestino         String?
+  aeropuertoDestino   String?
+  tieneConexion       Boolean   @default(false)
+  aeropuertoConexion  String?
+  ciudadConexion      String?
+  paisConexion        String?
+
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  deletedAt           DateTime?
+
+  viaje               Viaje     @relation(fields: [viajeId], references: [id], onDelete: Cascade)
+  gastoAsociado       Gasto?
+
+  @@map("eventos_itinerario")
+}
+
+model Gasto {
+  id                  String            @id @default(uuid())
+  viajeId             String
+  eventoId            String?           @unique
+  concepto            String
+  categoria           String            // transporte, alojamiento, comida, actividades, compras, otros
+  montoOriginal       Float
+  monedaOriginal      String            // JPY, USD, EUR, COP, etc.
+  montoCOP            Float             @default(0)
+  montoUSD            Float             @default(0)
+  tasaCambioFecha     Float?
+  conversionPendiente Boolean           @default(false)
+  fechaGasto          DateTime
+  timestampReal       DateTime          @default(now())
+  pagadoAdelantado    Boolean           @default(false) // Costo hundido
+  noComputar          Boolean           @default(false) // Compras para terceros
+  esIngreso           Boolean           @default(false) // Reembolso / Tax-Free
+  sincronizado        Boolean           @default(true)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  deletedAt           DateTime?
+
+  viaje               Viaje             @relation(fields: [viajeId], references: [id], onDelete: Cascade)
+  evento              EventoItinerario? @relation(fields: [eventoId], references: [id], onDelete: SetNull)
+
+  @@map("gastos")
+}
+
+model DocumentoBoveda {
+  id            String    @id @default(uuid())
+  viajeId       String
+  titulo        String
+  tipo          String    // reserva, qr, recibo, pasaporte, seguro, otro
+  archivoUrl    String?
+  archivoBase64 String?
+  mimeType      String?
+  tamanoBytes   Int?
+  notas         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  viaje         Viaje     @relation(fields: [viajeId], references: [id], onDelete: Cascade)
+
+  @@map("documentos_boveda")
+}
