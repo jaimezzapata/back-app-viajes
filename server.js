@@ -16,6 +16,23 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(sanitizeInput);
 
 /**
+ * Endpoint raíz (/) para verificación en navegador
+ */
+app.get('/', (req, res) => {
+  res.json({
+    ok: true,
+    service: 'app-viajes-backend',
+    status: 'online',
+    message: 'Servidor API de Bitácora de Viajes operativo',
+    endpoints: {
+      ping: '/ping',
+      api: '/api',
+      viajes: '/api/viajes'
+    }
+  });
+});
+
+/**
  * Endpoint de supervivencia (/ping)
  * Según STACK.MD y RF.MD:
  * Realiza peticiones automáticas (ping) para mantener el backend activo en Render
