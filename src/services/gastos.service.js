@@ -27,9 +27,16 @@ class GastosService {
     const monto = Number(montoOriginal);
     const moneda = (monedaOriginal || 'COP').toUpperCase();
 
-    // Conversión triple divisa: COP y USD
-    const montoCOP = convertCurrency(monto, moneda, 'COP', tasaCambioFecha);
-    const montoUSD = convertCurrency(monto, moneda, 'USD', tasaCambioFecha);
+    // Si el cliente ya capturó la tasa y monto exactos en vivo en el momento de la compra, respetarlos
+    const clientCOP = data.montoCOP !== undefined && data.montoCOP !== null ? Number(data.montoCOP) : null;
+    const clientUSD = data.montoUSD !== undefined && data.montoUSD !== null ? Number(data.montoUSD) : null;
+
+    const montoCOP = clientCOP !== null ? clientCOP : convertCurrency(monto, moneda, 'COP', tasaCambioFecha);
+    const montoUSD = clientUSD !== null ? clientUSD : convertCurrency(monto, moneda, 'USD', tasaCambioFecha);
+
+    const calculatedRate = tasaCambioFecha
+      ? Number(tasaCambioFecha)
+      : (monto > 0 && moneda !== 'COP' ? Number((montoCOP / monto).toFixed(4)) : 1.0);
 
     return gastosRepository.create({
       viajeId,
@@ -39,7 +46,7 @@ class GastosService {
       monedaOriginal: moneda,
       montoCOP,
       montoUSD,
-      tasaCambioFecha: tasaCambioFecha ? Number(tasaCambioFecha) : null,
+      tasaCambioFecha: calculatedRate,
       conversionPendiente: Boolean(conversionPendiente),
       fechaGasto: fechaGasto ? new Date(fechaGasto) : new Date(),
       timestampReal: timestampReal ? new Date(timestampReal) : new Date(),
@@ -60,8 +67,11 @@ class GastosService {
     const moneda = data.monedaOriginal || existing.monedaOriginal;
     const tasa = data.tasaCambioFecha !== undefined ? data.tasaCambioFecha : existing.tasaCambioFecha;
 
-    const montoCOP = convertCurrency(monto, moneda, 'COP', tasa);
-    const montoUSD = convertCurrency(monto, moneda, 'USD', tasa);
+    const clientCOP = data.montoCOP !== undefined && data.montoCOP !== null ? Number(data.montoCOP) : null;
+    const clientUSD = data.montoUSD !== undefined && data.montoUSD !== null ? Number(data.montoUSD) : null;
+
+    const montoCOP = clientCOP !== null ? clientCOP : convertCurrency(monto, moneda, 'COP', tasa);
+    const montoUSD = clientUSD !== null ? clientUSD : convertCurrency(monto, moneda, 'USD', tasa);
 
     return gastosRepository.update(id, {
       ...data,

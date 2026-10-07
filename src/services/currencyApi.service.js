@@ -9,13 +9,24 @@ const TRIP_CURRENCIES = ['COP', 'EUR', 'KRW', 'JPY', 'AED', 'USD'];
 // Tasas de respaldo seguras en caso de desconexión total
 const FALLBACK_RATES_FROM_USD = {
   USD: 1.0,
-  COP: 3333.96,
-  EUR: 0.882,
-  JPY: 157.30,
-  KRW: 1355.84,
+  COP: 3199.58,
+  BRL: 4.98,
+  MXN: 17.98,
+  EUR: 0.889,
+  JPY: 158.15,
+  KRW: 1338.92,
   AED: 3.6725,
-  MXN: 18.20,
-  GBP: 0.77
+  GBP: 0.754,
+  CHF: 0.832,
+  CAD: 1.36,
+  AUD: 1.52,
+  ARS: 880.0,
+  CLP: 940.0,
+  PEN: 3.75,
+  UYU: 38.5,
+  TRY: 32.5,
+  CNY: 7.23,
+  THB: 36.5
 };
 
 class CurrencyApiService {
