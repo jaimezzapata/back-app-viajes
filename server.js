@@ -1,4 +1,5 @@
 require('dotenv').config();
+// Servidor Express configurado con Supabase PostgreSQL y Prisma ORM
 const express = require('express');
 const cors = require('cors');
 const apiRoutes = require('./src/routes');
