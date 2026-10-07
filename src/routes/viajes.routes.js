@@ -13,6 +13,7 @@ const router = Router();
 
 // CRUD Viajes
 router.get('/', viajesController.getAll);
+router.get('/:id/share', viajesController.getById);
 router.get('/:id', viajesController.getById);
 router.post('/', validate(createViajeSchema), viajesController.create);
 router.put('/:id', validate(updateViajeSchema), viajesController.update);

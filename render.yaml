@@ -10,3 +10,9 @@ services:
         value: production
       - key: PORT
         value: 10000
+      - key: BACKEND_URL
+        value: https://back-app-viajes.onrender.com
+      - key: KEEP_ALIVE_URL
+        value: https://back-app-viajes.onrender.com/ping
+      - key: KEEP_ALIVE_INTERVAL_MINUTES
+        value: 10

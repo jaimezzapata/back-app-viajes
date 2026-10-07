@@ -34,26 +34,16 @@ app.get('/', (req, res) => {
 
 /**
  * Endpoint de supervivencia (/ping)
- * Según STACK.MD y RF.MD:
- * Realiza peticiones automáticas (ping) para mantener el backend activo en Render
- * y evitar tiempos de espera largos (Cold Starts).
+ * Petición ultraligera en memoria (0 consumo de base de datos)
+ * Responde de inmediato para mantener activo el backend y evitar Cold Starts.
  */
-app.get('/ping', async (req, res) => {
-  let dbStatus = 'disconnected';
-  try {
-    // Verificación rápida de conexión DB
-    await basePrisma.$queryRaw`SELECT 1`;
-    dbStatus = 'connected';
-  } catch (err) {
-    dbStatus = `error: ${err.message}`;
-  }
-
+app.get('/ping', (req, res) => {
   res.json({
     status: 'ok',
     service: 'app-viajes-backend',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    database: dbStatus
+    uptime: Math.floor(process.uptime()),
+    memoryMb: Math.round(process.memoryUsage().rss / (1024 * 1024))
   });
 });
 
@@ -81,11 +71,15 @@ app.use((err, req, res, next) => {
 });
 
 const currencyApiService = require('./src/services/currencyApi.service');
+const keepAliveService = require('./src/services/keepAlive.service');
 
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
     console.log(` Servidor de App de Viajes corriendo en http://localhost:${PORT}`);
     console.log(` Endpoint de supervivencia activo en http://localhost:${PORT}/ping`);
+
+    // Iniciar servicio Keep-Alive para consultas periódicas cada 10 minutos
+    keepAliveService.start();
 
     // Actualizar tasas de cambio con la API externa al iniciar
     currencyApiService.fetchLiveRates().catch(err => {
