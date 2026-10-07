@@ -50,6 +50,8 @@ app.get('/ping', (req, res) => {
 
 // Rutas de la API
 app.use('/api', apiRoutes);
+// Alias para compatibilidad directa de divisas
+app.use('/divisas', require('./src/routes/divisas.routes'));
 
 // Manejo de ruta no encontrada (404)
 app.use((req, res, next) => {
