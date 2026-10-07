@@ -1,13 +1,33 @@
 const { prisma } = require('../config/prisma');
 
 class ViajesRepository {
-  async findAll(usuarioId = null) {
-    const isUuid = usuarioId && typeof usuarioId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(usuarioId);
-    const where = isUuid
-      ? { OR: [{ usuarioId }, { usuarioId: null }] }
-      : {};
+  async findAll(usuarioId = null, email = null) {
+    let resolvedUserId = null;
+
+    if (usuarioId && typeof usuarioId === 'string') {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(usuarioId);
+      if (isUuid) {
+        resolvedUserId = usuarioId;
+      }
+    }
+
+    if (!resolvedUserId && email && typeof email === 'string') {
+      const user = await prisma.usuario.findUnique({
+        where: { email: email.trim().toLowerCase() },
+        select: { id: true }
+      }).catch(() => null);
+      if (user) {
+        resolvedUserId = user.id;
+      }
+    }
+
+    // Aislamiento estricto de privacidad: si no hay un usuario autenticado identificado, no se retornan viajes
+    if (!resolvedUserId) {
+      return [];
+    }
+
     return prisma.viaje.findMany({
-      where,
+      where: { usuarioId: resolvedUserId },
       orderBy: { fechaInicio: 'desc' },
       include: {
         usuario: {

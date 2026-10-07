@@ -3,8 +3,8 @@ const viajesService = require('../services/viajes.service');
 class ViajesController {
   async getAll(req, res, next) {
     try {
-      const { usuarioId } = req.query;
-      const viajes = await viajesService.getAllViajes(usuarioId);
+      const { usuarioId, email } = req.query;
+      const viajes = await viajesService.getAllViajes(usuarioId, email);
       res.json({ ok: true, data: viajes });
     } catch (err) {
       next(err);

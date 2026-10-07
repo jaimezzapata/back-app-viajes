@@ -47,8 +47,8 @@ function deserializeViajeMeta(viaje) {
 }
 
 class ViajesService {
-  async getAllViajes(usuarioId = null) {
-    const viajes = await viajesRepository.findAll(usuarioId);
+  async getAllViajes(usuarioId = null, email = null) {
+    const viajes = await viajesRepository.findAll(usuarioId, email);
     return viajes.map(deserializeViajeMeta);
   }
 
@@ -63,6 +63,7 @@ class ViajesService {
   async createViaje(data) {
     const {
       usuarioId,
+      usuarioEmail,
       titulo,
       tipoViaje,
       descripcion,
@@ -96,6 +97,18 @@ class ViajesService {
         if (userExists) {
           validUsuarioId = usuarioId;
         }
+      }
+    }
+
+    // Si no se encontró por usuarioId pero se envió usuarioEmail
+    if (!validUsuarioId && (usuarioEmail || (typeof usuarioId === 'string' && usuarioId.includes('@')))) {
+      const searchEmail = (usuarioEmail || usuarioId).trim().toLowerCase();
+      const userByEmail = await prisma.usuario.findUnique({
+        where: { email: searchEmail },
+        select: { id: true }
+      }).catch(() => null);
+      if (userByEmail) {
+        validUsuarioId = userByEmail.id;
       }
     }
 
