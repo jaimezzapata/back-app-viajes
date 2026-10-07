@@ -84,8 +84,23 @@ class ViajesService {
 
     const descConMeta = serializeViajeMeta(descripcion, origen, escalas, tipoViaje, destinosMultidestino);
 
+    // Validar de forma segura si el usuarioId es un UUID válido y existe en la base de datos
+    let validUsuarioId = null;
+    if (usuarioId && typeof usuarioId === 'string') {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(usuarioId);
+      if (isUuid) {
+        const userExists = await prisma.usuario.findUnique({
+          where: { id: usuarioId },
+          select: { id: true }
+        }).catch(() => null);
+        if (userExists) {
+          validUsuarioId = usuarioId;
+        }
+      }
+    }
+
     const nuevoViaje = await viajesRepository.create({
-      usuarioId: usuarioId || null,
+      usuarioId: validUsuarioId,
       titulo,
       descripcion: descConMeta,
       destino,
