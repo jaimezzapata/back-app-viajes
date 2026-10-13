@@ -4,20 +4,28 @@ class ViajesRepository {
   async findAll(usuarioId = null, email = null) {
     let resolvedUserId = null;
 
-    if (usuarioId && typeof usuarioId === 'string') {
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(usuarioId);
-      if (isUuid) {
-        resolvedUserId = usuarioId;
-      }
-    }
-
-    if (!resolvedUserId && email && typeof email === 'string') {
+    // 1. Si se provee email, resolver siempre el usuario canónico registrado con ese correo
+    if (email && typeof email === 'string') {
       const user = await prisma.usuario.findUnique({
         where: { email: email.trim().toLowerCase() },
         select: { id: true }
       }).catch(() => null);
       if (user) {
         resolvedUserId = user.id;
+      }
+    }
+
+    // 2. Si no se resolvió por email y vino usuarioId UUID, validar que realmente exista en BD
+    if (!resolvedUserId && usuarioId && typeof usuarioId === 'string') {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(usuarioId);
+      if (isUuid) {
+        const user = await prisma.usuario.findUnique({
+          where: { id: usuarioId },
+          select: { id: true }
+        }).catch(() => null);
+        if (user) {
+          resolvedUserId = user.id;
+        }
       }
     }
 

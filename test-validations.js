@@ -107,6 +107,26 @@ expectThrows(() => createEventoSchema.parse({
   latitud: 150 // Fuera de rango
 }), 'Rechaza latitud fuera de rango (-90 a 90)');
 
+const eventoConPresupuesto = createEventoSchema.parse({
+  titulo: 'Vuelo Medellín - Madrid',
+  tipo: 'vuelo',
+  fechaInicio: '2026-11-01T10:00:00Z',
+  costo: 3500000,
+  descontarPresupuesto: false,
+  pagadoAdelantado: true
+});
+assert(eventoConPresupuesto.descontarPresupuesto === false, 'Acepta indicar si se descuenta o no del presupuesto');
+assert(eventoConPresupuesto.pagadoAdelantado === true, 'Acepta indicar si es pagado por adelantado antes del viaje');
+
+const eventoDefaultPresupuesto = createEventoSchema.parse({
+  titulo: 'Museo del Prado',
+  tipo: 'atraccion',
+  fechaInicio: '2026-11-02T15:00:00Z',
+  costo: 60000
+});
+assert(eventoDefaultPresupuesto.descontarPresupuesto === true, 'Por defecto descuenta del presupuesto');
+assert(eventoDefaultPresupuesto.pagadoAdelantado === false, 'Por defecto pagadoAdelantado es false');
+
 console.log('\n--- 5. Pruebas de Validación de Gastos ---');
 expectThrows(() => createGastoSchema.parse({
   concepto: '   ',

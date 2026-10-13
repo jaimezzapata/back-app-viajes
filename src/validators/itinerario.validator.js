@@ -69,7 +69,9 @@ const createEventoSchema = z.object({
   escalaMayor24h: z.coerce.boolean().optional().default(false),
   tipoTrayecto: z.string().trim().optional().nullable().default('one-way'),
   tramo: z.string().trim().optional().nullable(),
-  roundTripGroupId: z.string().trim().optional().nullable()
+  roundTripGroupId: z.string().trim().optional().nullable(),
+  descontarPresupuesto: z.coerce.boolean().optional().default(true),
+  pagadoAdelantado: z.coerce.boolean().optional().default(false)
 }).refine(data => {
   if (data.fechaInicio && data.fechaFin) {
     return new Date(data.fechaFin) >= new Date(data.fechaInicio);
@@ -146,7 +148,9 @@ const updateEventoSchema = z.object({
   escalaMayor24h: z.coerce.boolean().optional(),
   tipoTrayecto: z.string().trim().optional().nullable(),
   tramo: z.string().trim().optional().nullable(),
-  roundTripGroupId: z.string().trim().optional().nullable()
+  roundTripGroupId: z.string().trim().optional().nullable(),
+  descontarPresupuesto: z.coerce.boolean().optional(),
+  pagadoAdelantado: z.coerce.boolean().optional()
 }).refine(data => {
   if (data.fechaInicio && data.fechaFin) {
     return new Date(data.fechaFin) >= new Date(data.fechaInicio);

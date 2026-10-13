@@ -6,6 +6,8 @@ function serializeEventoMeta(notas, extraMeta = {}) {
   const meta = typeof extraMeta === 'object' && extraMeta !== null ? { ...extraMeta } : {};
   if (meta.horasEscala !== undefined && meta.horasEscala !== null) meta.horasEscala = Number(meta.horasEscala);
   if (meta.escalaMayor24h !== undefined && meta.escalaMayor24h !== null) meta.escalaMayor24h = Boolean(meta.escalaMayor24h);
+  if (meta.descontarPresupuesto !== undefined && meta.descontarPresupuesto !== null) meta.descontarPresupuesto = Boolean(meta.descontarPresupuesto);
+  if (meta.pagadoAdelantado !== undefined && meta.pagadoAdelantado !== null) meta.pagadoAdelantado = Boolean(meta.pagadoAdelantado);
   
   Object.keys(meta).forEach(k => {
     if (meta[k] === undefined || meta[k] === null || meta[k] === '') delete meta[k];
@@ -24,7 +26,19 @@ function deserializeEventoMeta(evento) {
   let tipoTrayecto = evento.tipoTrayecto || ((evento.tipo || '').toLowerCase() === 'vuelo' ? 'one-way' : null);
   let tramo = evento.tramo || null;
   let roundTripGroupId = evento.roundTripGroupId || null;
+  let descontarPresupuesto = evento.descontarPresupuesto !== undefined ? Boolean(evento.descontarPresupuesto) : true;
+  let pagadoAdelantado = evento.pagadoAdelantado !== undefined ? Boolean(evento.pagadoAdelantado) : false;
   let notas = evento.notas || null;
+
+  // Si tiene gastoAsociado, deducir los flags contables reales
+  if (evento.gastoAsociado) {
+    if (evento.gastoAsociado.pagadoAdelantado !== undefined) {
+      pagadoAdelantado = Boolean(evento.gastoAsociado.pagadoAdelantado);
+    }
+    if (evento.gastoAsociado.noComputar !== undefined) {
+      descontarPresupuesto = !Boolean(evento.gastoAsociado.noComputar);
+    }
+  }
 
   if (notas && notas.includes('<!--META:')) {
     const match = notas.match(/<!--META:(.*?):META-->/);
@@ -36,6 +50,8 @@ function deserializeEventoMeta(evento) {
         if (meta.tipoTrayecto) tipoTrayecto = meta.tipoTrayecto;
         if (meta.tramo) tramo = meta.tramo;
         if (meta.roundTripGroupId) roundTripGroupId = meta.roundTripGroupId;
+        if (meta.descontarPresupuesto !== undefined) descontarPresupuesto = Boolean(meta.descontarPresupuesto);
+        if (meta.pagadoAdelantado !== undefined) pagadoAdelantado = Boolean(meta.pagadoAdelantado);
       } catch {}
       notas = notas.replace(/\n?<!--META:.*?:META-->/g, '').trim() || null;
     }
@@ -53,7 +69,9 @@ function deserializeEventoMeta(evento) {
     escalaMayor24h,
     tipoTrayecto,
     tramo,
-    roundTripGroupId
+    roundTripGroupId,
+    descontarPresupuesto,
+    pagadoAdelantado
   };
 }
 
@@ -103,7 +121,23 @@ class ItinerarioService {
    * - RF 3.2: Automatización de Costos (Interoperabilidad): Si tiene valor económico, se crea un gasto en Gastos.
    */
   async createEvento(data) {
-    let { fechaInicio, fechaFin, costo, moneda, viajeId, titulo, tipo, horasEscala, escalaMayor24h, tipoTrayecto, tramo, roundTripGroupId, notas } = data;
+    let {
+      fechaInicio,
+      fechaFin,
+      costo,
+      moneda,
+      viajeId,
+      titulo,
+      tipo,
+      horasEscala,
+      escalaMayor24h,
+      tipoTrayecto,
+      tramo,
+      roundTripGroupId,
+      descontarPresupuesto,
+      pagadoAdelantado,
+      notas
+    } = data;
 
     const startDate = new Date(fechaInicio);
     let endDate;
@@ -120,12 +154,17 @@ class ItinerarioService {
 
     // Deducir escalaMayor24h si hay horasEscala
     const isMayor24 = escalaMayor24h || (horasEscala !== undefined && Number(horasEscala) > 24);
+    const isDescontar = descontarPresupuesto !== undefined ? Boolean(descontarPresupuesto) : true;
+    const isAdelantado = Boolean(pagadoAdelantado);
+
     const notasConMeta = serializeEventoMeta(notas, {
       horasEscala,
       escalaMayor24h: isMayor24,
       tipoTrayecto: tipoTrayecto || (tipo === 'vuelo' ? 'one-way' : undefined),
       tramo,
-      roundTripGroupId
+      roundTripGroupId,
+      descontarPresupuesto: isDescontar,
+      pagadoAdelantado: isAdelantado
     });
 
     const dataPrisma = { ...data };
@@ -134,6 +173,8 @@ class ItinerarioService {
     delete dataPrisma.tipoTrayecto;
     delete dataPrisma.tramo;
     delete dataPrisma.roundTripGroupId;
+    delete dataPrisma.descontarPresupuesto;
+    delete dataPrisma.pagadoAdelantado;
     dataPrisma.notas = notasConMeta;
     dataPrisma.fechaInicio = startDate;
     dataPrisma.fechaFin = endDate;
@@ -160,15 +201,17 @@ class ItinerarioService {
         montoCOP,
         montoUSD,
         fechaGasto: startDate,
-        pagadoAdelantado: false,
-        noComputar: false,
+        pagadoAdelantado: isAdelantado,
+        noComputar: !isDescontar,
         esIngreso: false,
         sincronizado: true
       });
     }
 
+    const eventoFinal = deserializeEventoMeta({ ...nuevoEvento, gastoAsociado: gastoCreado });
+
     return {
-      evento: deserializeEventoMeta(nuevoEvento),
+      evento: eventoFinal,
       gastoAsociado: gastoCreado,
       hasConflicts: conflicts.length > 0,
       conflicts
@@ -187,6 +230,8 @@ class ItinerarioService {
     const newTipoTrayecto = data.tipoTrayecto !== undefined ? data.tipoTrayecto : currentMeta?.tipoTrayecto;
     const newTramo = data.tramo !== undefined ? data.tramo : currentMeta?.tramo;
     const newRoundTripGroupId = data.roundTripGroupId !== undefined ? data.roundTripGroupId : currentMeta?.roundTripGroupId;
+    const newDescontar = data.descontarPresupuesto !== undefined ? Boolean(data.descontarPresupuesto) : (currentMeta?.descontarPresupuesto !== undefined ? currentMeta.descontarPresupuesto : true);
+    const newAdelantado = data.pagadoAdelantado !== undefined ? Boolean(data.pagadoAdelantado) : (currentMeta?.pagadoAdelantado !== undefined ? currentMeta.pagadoAdelantado : false);
     const rawNotas = data.notas !== undefined ? data.notas : currentMeta?.notas;
 
     let startDate = data.fechaInicio ? new Date(data.fechaInicio) : existing.fechaInicio;
@@ -200,12 +245,16 @@ class ItinerarioService {
     delete dataPrisma.tipoTrayecto;
     delete dataPrisma.tramo;
     delete dataPrisma.roundTripGroupId;
+    delete dataPrisma.descontarPresupuesto;
+    delete dataPrisma.pagadoAdelantado;
     dataPrisma.notas = serializeEventoMeta(rawNotas, {
       horasEscala: newHorasEscala,
       escalaMayor24h: newMayor24,
       tipoTrayecto: newTipoTrayecto,
       tramo: newTramo,
-      roundTripGroupId: newRoundTripGroupId
+      roundTripGroupId: newRoundTripGroupId,
+      descontarPresupuesto: newDescontar,
+      pagadoAdelantado: newAdelantado
     });
     dataPrisma.fechaInicio = startDate;
     dataPrisma.fechaFin = endDate;
@@ -215,20 +264,43 @@ class ItinerarioService {
 
     const updated = await itinerarioRepository.update(id, dataPrisma);
 
-    // Sincronizar con gasto asociado si existe
-    if (data.costo !== undefined) {
-      const gastoExistente = await gastosRepository.findByEventoId(id);
-      if (gastoExistente) {
-        const montoOriginal = Number(data.costo || 0);
-        const monedaOriginal = data.moneda || gastoExistente.monedaOriginal;
-        await gastosRepository.update(gastoExistente.id, {
-          montoOriginal,
-          monedaOriginal,
-          montoCOP: convertCurrency(montoOriginal, monedaOriginal, 'COP'),
-          montoUSD: convertCurrency(montoOriginal, monedaOriginal, 'USD'),
-          concepto: `${data.tipo ? data.tipo.toUpperCase() + ': ' : ''}${data.titulo || updated.titulo}`
-        });
-      }
+    // Sincronizar con gasto asociado si existe, o crearlo si se introdujo costo
+    const costoFinal = data.costo !== undefined ? Number(data.costo || 0) : Number(existing.costo || 0);
+    const gastoExistente = await gastosRepository.findByEventoId(id);
+
+    if (gastoExistente) {
+      const montoOriginal = costoFinal;
+      const monedaOriginal = (data.moneda || gastoExistente.monedaOriginal || 'COP').toUpperCase();
+      const updateGastoData = {
+        montoOriginal,
+        monedaOriginal,
+        montoCOP: convertCurrency(montoOriginal, monedaOriginal, 'COP'),
+        montoUSD: convertCurrency(montoOriginal, monedaOriginal, 'USD'),
+        concepto: `${data.tipo ? data.tipo.toUpperCase() + ': ' : (existing.tipo ? existing.tipo.toUpperCase() + ': ' : '')}${data.titulo || updated.titulo}`,
+        pagadoAdelantado: newAdelantado,
+        noComputar: !newDescontar
+      };
+      await gastosRepository.update(gastoExistente.id, updateGastoData);
+    } else if (costoFinal > 0) {
+      const monedaOriginal = (data.moneda || existing.moneda || 'COP').toUpperCase();
+      const montoCOP = convertCurrency(costoFinal, monedaOriginal, 'COP');
+      const montoUSD = convertCurrency(costoFinal, monedaOriginal, 'USD');
+      const tipoFinal = data.tipo || existing.tipo;
+      await gastosRepository.create({
+        viajeId: existing.viajeId,
+        eventoId: id,
+        concepto: `${tipoFinal ? tipoFinal.toUpperCase() + ': ' : ''}${data.titulo || updated.titulo}`,
+        categoria: tipoFinal === 'hotel' ? 'alojamiento' : (tipoFinal === 'vuelo' || tipoFinal === 'transporte' ? 'transporte' : 'actividades'),
+        montoOriginal: costoFinal,
+        monedaOriginal,
+        montoCOP,
+        montoUSD,
+        fechaGasto: startDate,
+        pagadoAdelantado: newAdelantado,
+        noComputar: !newDescontar,
+        esIngreso: false,
+        sincronizado: true
+      });
     }
 
     return {

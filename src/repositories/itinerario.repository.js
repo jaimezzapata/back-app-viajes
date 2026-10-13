@@ -29,7 +29,10 @@ class ItinerarioRepository {
   async update(id, data) {
     return prisma.eventoItinerario.update({
       where: { id },
-      data
+      data,
+      include: {
+        gastoAsociado: true
+      }
     });
   }
 
