@@ -320,4 +320,8 @@ class ItinerarioService {
   }
 }
 
-module.exports = new ItinerarioService();
+const itinerarioServiceInstance = new ItinerarioService();
+itinerarioServiceInstance.deserializeEventoMeta = deserializeEventoMeta;
+itinerarioServiceInstance.serializeEventoMeta = serializeEventoMeta;
+
+module.exports = itinerarioServiceInstance;

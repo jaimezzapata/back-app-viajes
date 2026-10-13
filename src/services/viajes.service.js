@@ -57,7 +57,12 @@ class ViajesService {
     if (!viaje) {
       throw new Error('Viaje no encontrado');
     }
-    return deserializeViajeMeta(viaje);
+    const deserialized = deserializeViajeMeta(viaje);
+    if (Array.isArray(deserialized.itinerarios)) {
+      const itinerarioService = require('./itinerario.service');
+      deserialized.itinerarios = deserialized.itinerarios.map(itinerarioService.deserializeEventoMeta);
+    }
+    return deserialized;
   }
 
   async createViaje(data) {
