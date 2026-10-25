@@ -35,16 +35,32 @@ app.get('/', (req, res) => {
 
 /**
  * Endpoint de supervivencia (/ping)
- * Petición ultraligera en memoria (0 consumo de base de datos)
- * Responde de inmediato para mantener activo el backend y evitar Cold Starts.
+ * Responde con métricas del servidor y ejecuta un toque ultraligero a la BD (SELECT 1)
+ * para evitar que Render y Supabase entren en suspensión por inactividad.
  */
-app.get('/ping', (req, res) => {
+app.get('/ping', async (req, res) => {
+  let dbStatus = 'skipped';
+
+  // Si no se deshabilita explícitamente (?db=false), envía un SELECT 1 con timeout de seguridad de 3s
+  if (req.query.db !== 'false') {
+    try {
+      await Promise.race([
+        basePrisma.$queryRaw`SELECT 1`,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout (3s)')), 3000))
+      ]);
+      dbStatus = 'connected';
+    } catch (err) {
+      dbStatus = 'error: ' + (err.message || 'unreachable');
+    }
+  }
+
   res.json({
     status: 'ok',
     service: 'app-viajes-backend',
     timestamp: new Date().toISOString(),
     uptime: Math.floor(process.uptime()),
-    memoryMb: Math.round(process.memoryUsage().rss / (1024 * 1024))
+    memoryMb: Math.round(process.memoryUsage().rss / (1024 * 1024)),
+    db: dbStatus
   });
 });
 
