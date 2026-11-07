@@ -71,7 +71,8 @@ const createEventoSchema = z.object({
   tramo: z.string().trim().optional().nullable(),
   roundTripGroupId: z.string().trim().optional().nullable(),
   descontarPresupuesto: z.coerce.boolean().optional().default(true),
-  pagadoAdelantado: z.coerce.boolean().optional().default(false)
+  pagadoAdelantado: z.coerce.boolean().optional().default(false),
+  tarjetaCredito: z.string().trim().optional().nullable()
 }).refine(data => {
   if (data.fechaInicio && data.fechaFin) {
     return new Date(data.fechaFin) >= new Date(data.fechaInicio);
@@ -150,7 +151,8 @@ const updateEventoSchema = z.object({
   tramo: z.string().trim().optional().nullable(),
   roundTripGroupId: z.string().trim().optional().nullable(),
   descontarPresupuesto: z.coerce.boolean().optional(),
-  pagadoAdelantado: z.coerce.boolean().optional()
+  pagadoAdelantado: z.coerce.boolean().optional(),
+  tarjetaCredito: z.string().trim().optional().nullable()
 }).refine(data => {
   if (data.fechaInicio && data.fechaFin) {
     return new Date(data.fechaFin) >= new Date(data.fechaInicio);

@@ -43,6 +43,7 @@ const createGastoSchema = z.object({
   pagadoAdelantado: z.coerce.boolean().optional().default(false),
   noComputar: z.coerce.boolean().optional().default(false),
   esIngreso: z.coerce.boolean().optional().default(false),
+  tarjetaCredito: z.string().trim().optional().nullable(),
   sincronizado: z.coerce.boolean().optional().default(true)
 });
 
@@ -87,6 +88,7 @@ const updateGastoSchema = z.object({
   pagadoAdelantado: z.coerce.boolean().optional(),
   noComputar: z.coerce.boolean().optional(),
   esIngreso: z.coerce.boolean().optional(),
+  tarjetaCredito: z.string().trim().optional().nullable(),
   sincronizado: z.coerce.boolean().optional()
 });
 

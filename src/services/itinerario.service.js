@@ -28,6 +28,7 @@ function deserializeEventoMeta(evento) {
   let roundTripGroupId = evento.roundTripGroupId || null;
   let descontarPresupuesto = evento.descontarPresupuesto !== undefined ? Boolean(evento.descontarPresupuesto) : true;
   let pagadoAdelantado = evento.pagadoAdelantado !== undefined ? Boolean(evento.pagadoAdelantado) : false;
+  let tarjetaCredito = evento.tarjetaCredito || null;
   let notas = evento.notas || null;
 
   // Si tiene gastoAsociado, deducir los flags contables reales
@@ -37,6 +38,9 @@ function deserializeEventoMeta(evento) {
     }
     if (evento.gastoAsociado.noComputar !== undefined) {
       descontarPresupuesto = !Boolean(evento.gastoAsociado.noComputar);
+    }
+    if (evento.gastoAsociado.tarjetaCredito) {
+      tarjetaCredito = evento.gastoAsociado.tarjetaCredito;
     }
   }
 
@@ -52,6 +56,7 @@ function deserializeEventoMeta(evento) {
         if (meta.roundTripGroupId) roundTripGroupId = meta.roundTripGroupId;
         if (meta.descontarPresupuesto !== undefined) descontarPresupuesto = Boolean(meta.descontarPresupuesto);
         if (meta.pagadoAdelantado !== undefined) pagadoAdelantado = Boolean(meta.pagadoAdelantado);
+        if (meta.tarjetaCredito) tarjetaCredito = meta.tarjetaCredito;
       } catch {}
       notas = notas.replace(/\n?<!--META:.*?:META-->/g, '').trim() || null;
     }
@@ -71,7 +76,8 @@ function deserializeEventoMeta(evento) {
     tramo,
     roundTripGroupId,
     descontarPresupuesto,
-    pagadoAdelantado
+    pagadoAdelantado,
+    tarjetaCredito
   };
 }
 
@@ -164,7 +170,8 @@ class ItinerarioService {
       tramo,
       roundTripGroupId,
       descontarPresupuesto: isDescontar,
-      pagadoAdelantado: isAdelantado
+      pagadoAdelantado: isAdelantado,
+      tarjetaCredito: data.tarjetaCredito || undefined
     });
 
     const dataPrisma = { ...data };
@@ -175,6 +182,7 @@ class ItinerarioService {
     delete dataPrisma.roundTripGroupId;
     delete dataPrisma.descontarPresupuesto;
     delete dataPrisma.pagadoAdelantado;
+    delete dataPrisma.tarjetaCredito;
     dataPrisma.notas = notasConMeta;
     dataPrisma.fechaInicio = startDate;
     dataPrisma.fechaFin = endDate;
@@ -204,6 +212,7 @@ class ItinerarioService {
         pagadoAdelantado: isAdelantado,
         noComputar: !isDescontar,
         esIngreso: false,
+        tarjetaCredito: data.tarjetaCredito || undefined,
         sincronizado: true
       });
     }
@@ -232,6 +241,7 @@ class ItinerarioService {
     const newRoundTripGroupId = data.roundTripGroupId !== undefined ? data.roundTripGroupId : currentMeta?.roundTripGroupId;
     const newDescontar = data.descontarPresupuesto !== undefined ? Boolean(data.descontarPresupuesto) : (currentMeta?.descontarPresupuesto !== undefined ? currentMeta.descontarPresupuesto : true);
     const newAdelantado = data.pagadoAdelantado !== undefined ? Boolean(data.pagadoAdelantado) : (currentMeta?.pagadoAdelantado !== undefined ? currentMeta.pagadoAdelantado : false);
+    const newTarjetaCredito = data.tarjetaCredito !== undefined ? data.tarjetaCredito : currentMeta?.tarjetaCredito;
     const rawNotas = data.notas !== undefined ? data.notas : currentMeta?.notas;
 
     let startDate = data.fechaInicio ? new Date(data.fechaInicio) : existing.fechaInicio;
@@ -247,6 +257,7 @@ class ItinerarioService {
     delete dataPrisma.roundTripGroupId;
     delete dataPrisma.descontarPresupuesto;
     delete dataPrisma.pagadoAdelantado;
+    delete dataPrisma.tarjetaCredito;
     dataPrisma.notas = serializeEventoMeta(rawNotas, {
       horasEscala: newHorasEscala,
       escalaMayor24h: newMayor24,
@@ -254,7 +265,8 @@ class ItinerarioService {
       tramo: newTramo,
       roundTripGroupId: newRoundTripGroupId,
       descontarPresupuesto: newDescontar,
-      pagadoAdelantado: newAdelantado
+      pagadoAdelantado: newAdelantado,
+      tarjetaCredito: newTarjetaCredito || undefined
     });
     dataPrisma.fechaInicio = startDate;
     dataPrisma.fechaFin = endDate;
@@ -266,31 +278,42 @@ class ItinerarioService {
 
     // Sincronizar con gasto asociado si existe, o crearlo si se introdujo costo
     const costoFinal = data.costo !== undefined ? Number(data.costo || 0) : Number(existing.costo || 0);
+    const tipoFinal = data.tipo || existing.tipo;
+    const categoriaFinal = tipoFinal === 'hotel'
+      ? 'alojamiento'
+      : (tipoFinal === 'vuelo' || tipoFinal === 'transporte'
+        ? 'transporte'
+        : (tipoFinal === 'comida'
+          ? 'comida'
+          : 'actividades'));
+
     const gastoExistente = await gastosRepository.findByEventoId(id);
 
+    let gastoSincronizado = null;
     if (gastoExistente) {
       const montoOriginal = costoFinal;
       const monedaOriginal = (data.moneda || gastoExistente.monedaOriginal || 'COP').toUpperCase();
       const updateGastoData = {
         montoOriginal,
         monedaOriginal,
+        categoria: categoriaFinal,
         montoCOP: convertCurrency(montoOriginal, monedaOriginal, 'COP'),
         montoUSD: convertCurrency(montoOriginal, monedaOriginal, 'USD'),
-        concepto: `${data.tipo ? data.tipo.toUpperCase() + ': ' : (existing.tipo ? existing.tipo.toUpperCase() + ': ' : '')}${data.titulo || updated.titulo}`,
+        concepto: `${tipoFinal ? tipoFinal.toUpperCase() + ': ' : ''}${data.titulo || updated.titulo}`,
         pagadoAdelantado: newAdelantado,
-        noComputar: !newDescontar
+        noComputar: !newDescontar,
+        tarjetaCredito: newTarjetaCredito || undefined
       };
-      await gastosRepository.update(gastoExistente.id, updateGastoData);
+      gastoSincronizado = await gastosRepository.update(gastoExistente.id, updateGastoData);
     } else if (costoFinal > 0) {
       const monedaOriginal = (data.moneda || existing.moneda || 'COP').toUpperCase();
       const montoCOP = convertCurrency(costoFinal, monedaOriginal, 'COP');
       const montoUSD = convertCurrency(costoFinal, monedaOriginal, 'USD');
-      const tipoFinal = data.tipo || existing.tipo;
-      await gastosRepository.create({
+      gastoSincronizado = await gastosRepository.create({
         viajeId: existing.viajeId,
         eventoId: id,
         concepto: `${tipoFinal ? tipoFinal.toUpperCase() + ': ' : ''}${data.titulo || updated.titulo}`,
-        categoria: tipoFinal === 'hotel' ? 'alojamiento' : (tipoFinal === 'vuelo' || tipoFinal === 'transporte' ? 'transporte' : 'actividades'),
+        categoria: categoriaFinal,
         montoOriginal: costoFinal,
         monedaOriginal,
         montoCOP,
@@ -299,12 +322,19 @@ class ItinerarioService {
         pagadoAdelantado: newAdelantado,
         noComputar: !newDescontar,
         esIngreso: false,
+        tarjetaCredito: newTarjetaCredito || undefined,
         sincronizado: true
       });
     }
 
+    const eventoFinal = {
+      ...updated,
+      tipo: tipoFinal,
+      ...(gastoSincronizado ? { gastoAsociado: gastoSincronizado } : {})
+    };
+
     return {
-      evento: deserializeEventoMeta(updated),
+      evento: deserializeEventoMeta(eventoFinal),
       hasConflicts: conflicts.length > 0,
       conflicts
     };
