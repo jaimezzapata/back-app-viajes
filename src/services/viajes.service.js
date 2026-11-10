@@ -1,12 +1,13 @@
 const viajesRepository = require('../repositories/viajes.repository');
 const { prisma } = require('../config/prisma');
 
-function serializeViajeMeta(descripcion, origen, escalas, tipoViaje, destinosMultidestino) {
+function serializeViajeMeta(descripcion, origen, escalas, tipoViaje, destinosMultidestino, categoriasPresupuesto) {
   const meta = {};
   if (origen) meta.origen = origen;
   if (escalas) meta.escalas = escalas;
   if (tipoViaje) meta.tipoViaje = tipoViaje;
   if (destinosMultidestino && Array.isArray(destinosMultidestino)) meta.destinosMultidestino = destinosMultidestino;
+  if (categoriasPresupuesto && Array.isArray(categoriasPresupuesto)) meta.categoriasPresupuesto = categoriasPresupuesto;
 
   if (Object.keys(meta).length === 0) return descripcion || null;
   const metaTag = `\n<!--META:${JSON.stringify(meta)}:META-->`;
@@ -20,6 +21,7 @@ function deserializeViajeMeta(viaje) {
   let escalas = viaje.escalas || null;
   let tipoViaje = viaje.tipoViaje || 'unico';
   let destinosMultidestino = viaje.destinosMultidestino || [];
+  let categoriasPresupuesto = viaje.categoriasPresupuesto || null;
   let descripcion = viaje.descripcion || null;
 
   if (descripcion && descripcion.includes('<!--META:')) {
@@ -31,6 +33,7 @@ function deserializeViajeMeta(viaje) {
         if (!escalas && meta.escalas) escalas = meta.escalas;
         if (meta.tipoViaje) tipoViaje = meta.tipoViaje;
         if (meta.destinosMultidestino) destinosMultidestino = meta.destinosMultidestino;
+        if (meta.categoriasPresupuesto) categoriasPresupuesto = meta.categoriasPresupuesto;
       } catch {}
       descripcion = descripcion.replace(/\n?<!--META:.*?:META-->/g, '').trim() || null;
     }
@@ -42,7 +45,8 @@ function deserializeViajeMeta(viaje) {
     origen,
     escalas,
     tipoViaje,
-    destinosMultidestino
+    destinosMultidestino,
+    ...(categoriasPresupuesto ? { categoriasPresupuesto } : {})
   };
 }
 
@@ -156,6 +160,9 @@ class ViajesService {
     const newEscalas = data.escalas !== undefined ? data.escalas : currentMeta?.escalas;
     const newTipoViaje = data.tipoViaje !== undefined ? data.tipoViaje : currentMeta?.tipoViaje;
     const newDestinosMultidestino = data.destinosMultidestino !== undefined ? data.destinosMultidestino : currentMeta?.destinosMultidestino;
+    const newCategoriasPresupuesto = data.categoriasPresupuesto !== undefined
+      ? data.categoriasPresupuesto
+      : (data.presupuestosPorCategoria !== undefined ? data.presupuestosPorCategoria : currentMeta?.categoriasPresupuesto);
     const rawDesc = data.descripcion !== undefined ? data.descripcion : currentMeta?.descripcion;
 
     const updateData = { ...data };
@@ -163,30 +170,50 @@ class ViajesService {
     if (data.fechaFin) updateData.fechaFin = new Date(data.fechaFin);
     if (data.presupuestoTotal !== undefined) updateData.presupuestoTotal = Number(data.presupuestoTotal);
 
-    updateData.descripcion = serializeViajeMeta(rawDesc, newOrigen, newEscalas, newTipoViaje, newDestinosMultidestino);
+    updateData.descripcion = serializeViajeMeta(
+      rawDesc,
+      newOrigen,
+      newEscalas,
+      newTipoViaje,
+      newDestinosMultidestino,
+      newCategoriasPresupuesto
+    );
     delete updateData.origen;
     delete updateData.escalas;
     delete updateData.tipoViaje;
     delete updateData.destinosMultidestino;
     delete updateData.presupuestosPorCategoria;
+    delete updateData.categoriasPresupuesto;
 
     await viajesRepository.update(id, updateData);
 
     // Actualizar presupuestos por categoría si se proveen
-    if (data.presupuestosPorCategoria && Array.isArray(data.presupuestosPorCategoria)) {
-      for (const item of data.presupuestosPorCategoria) {
+    const catList = data.presupuestosPorCategoria || data.categoriasPresupuesto;
+    if (catList && Array.isArray(catList)) {
+      const validNames = catList.map(c => (c.categoria || '').trim().toLowerCase()).filter(Boolean);
+      await prisma.presupuestoCategoria.deleteMany({
+        where: {
+          viajeId: id,
+          categoria: { notIn: validNames }
+        }
+      }).catch(() => {});
+
+      for (const item of catList) {
+        const catName = (item.categoria || '').trim().toLowerCase();
+        if (!catName) continue;
+        const lim = Number(item.limite) || 0;
         await prisma.presupuestoCategoria.upsert({
           where: {
             viajeId_categoria: {
               viajeId: id,
-              categoria: item.categoria
+              categoria: catName
             }
           },
-          update: { limite: Number(item.limite) },
+          update: { limite: lim, deletedAt: null },
           create: {
             viajeId: id,
-            categoria: item.categoria,
-            limite: Number(item.limite)
+            categoria: catName,
+            limite: lim
           }
         });
       }

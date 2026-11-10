@@ -1,7 +1,5 @@
 const { z } = require('zod');
 
-const CATEGORIAS_VALIDAS = ['transporte', 'alojamiento', 'comida', 'actividades', 'compras', 'otros'];
-
 const createGastoSchema = z.object({
   concepto: z
     .string({ required_error: 'El concepto del gasto es obligatorio' })
@@ -10,10 +8,8 @@ const createGastoSchema = z.object({
   categoria: z
     .string({ required_error: 'La categoría es obligatoria' })
     .trim()
-    .toLowerCase()
-    .refine(val => CATEGORIAS_VALIDAS.includes(val), {
-      message: `La categoría debe ser una de: ${CATEGORIAS_VALIDAS.join(', ')}`
-    }),
+    .min(1, 'La categoría no puede estar vacía')
+    .toLowerCase(),
   montoOriginal: z
     .coerce
     .number({ invalid_type_error: 'El monto debe ser numérico', required_error: 'El monto es obligatorio' })
@@ -52,10 +48,8 @@ const updateGastoSchema = z.object({
   categoria: z
     .string()
     .trim()
+    .min(1, 'La categoría no puede estar vacía')
     .toLowerCase()
-    .refine(val => CATEGORIAS_VALIDAS.includes(val), {
-      message: `La categoría debe ser una de: ${CATEGORIAS_VALIDAS.join(', ')}`
-    })
     .optional(),
   montoOriginal: z
     .coerce

@@ -38,6 +38,7 @@ class ViajesRepository {
       where: { usuarioId: resolvedUserId },
       orderBy: { fechaInicio: 'desc' },
       include: {
+        presupuestos: true,
         usuario: {
           select: { id: true, nombre: true, email: true }
         },
