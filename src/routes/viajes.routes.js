@@ -2,12 +2,10 @@ const { Router } = require('express');
 const viajesController = require('../controllers/viajes.controller');
 const itinerarioController = require('../controllers/itinerario.controller');
 const gastosController = require('../controllers/gastos.controller');
-const bovedaController = require('../controllers/boveda.controller');
 const { validate } = require('../middlewares/validate');
 const { createViajeSchema, updateViajeSchema } = require('../validators/viajes.validator');
 const { createEventoSchema } = require('../validators/itinerario.validator');
 const { createGastoSchema } = require('../validators/gastos.validator');
-const { createDocumentoSchema } = require('../validators/boveda.validator');
 
 const router = Router();
 
@@ -28,9 +26,5 @@ router.post('/:viajeId/itinerario', validate(createEventoSchema), itinerarioCont
 router.get('/:viajeId/gastos', gastosController.getByViaje);
 router.post('/:viajeId/gastos', validate(createGastoSchema), gastosController.create);
 router.get('/:viajeId/balance', gastosController.getBalance);
-
-// Bóveda de documentos de un viaje
-router.get('/:viajeId/boveda', bovedaController.getByViaje);
-router.post('/:viajeId/boveda', validate(createDocumentoSchema), bovedaController.create);
 
 module.exports = router;

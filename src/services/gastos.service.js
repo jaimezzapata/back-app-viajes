@@ -1,10 +1,34 @@
 const gastosRepository = require('../repositories/gastos.repository');
 const viajesRepository = require('../repositories/viajes.repository');
+const itinerarioService = require('./itinerario.service');
 const { convertCurrency, formatAmount } = require('../utils/currency');
+
+function enrichGastoWithEventoMeta(gasto) {
+  if (!gasto) return gasto;
+  let tarjetaCredito = gasto.tarjetaCredito || null;
+  if (gasto.evento && gasto.evento.notas && gasto.evento.notas.includes('<!--META:')) {
+    const match = gasto.evento.notas.match(/<!--META:(.*?):META-->/);
+    if (match) {
+      try {
+        const meta = JSON.parse(match[1]);
+        if (!tarjetaCredito && meta.tarjetaCredito) {
+          tarjetaCredito = meta.tarjetaCredito;
+        }
+      } catch {}
+    }
+  }
+  return {
+    ...gasto,
+    ...(tarjetaCredito ? { tarjetaCredito } : {})
+  };
+}
 
 class GastosService {
   async getGastosByViaje(viajeId) {
-    return gastosRepository.findByViajeId(viajeId);
+    // Asegurar que todos los eventos con costo tengan su gasto asociado creado
+    await itinerarioService.getEventosByViaje(viajeId).catch(() => {});
+    const gastos = await gastosRepository.findByViajeId(viajeId);
+    return gastos.map(enrichGastoWithEventoMeta);
   }
 
   async createGasto(data) {
@@ -73,14 +97,24 @@ class GastosService {
     const montoCOP = clientCOP !== null ? clientCOP : convertCurrency(monto, moneda, 'COP', tasa);
     const montoUSD = clientUSD !== null ? clientUSD : convertCurrency(monto, moneda, 'USD', tasa);
 
-    return gastosRepository.update(id, {
-      ...data,
+    const updatePayload = {
       montoOriginal: formatAmount(monto, moneda),
+      monedaOriginal: moneda,
       montoCOP,
       montoUSD,
       fechaGasto: data.fechaGasto ? new Date(data.fechaGasto) : existing.fechaGasto,
       timestampReal: data.timestampReal ? new Date(data.timestampReal) : existing.timestampReal
-    });
+    };
+    if (data.concepto !== undefined) updatePayload.concepto = data.concepto;
+    if (data.categoria !== undefined) updatePayload.categoria = data.categoria;
+    if (data.tasaCambioFecha !== undefined) updatePayload.tasaCambioFecha = data.tasaCambioFecha;
+    if (data.conversionPendiente !== undefined) updatePayload.conversionPendiente = Boolean(data.conversionPendiente);
+    if (data.pagadoAdelantado !== undefined) updatePayload.pagadoAdelantado = Boolean(data.pagadoAdelantado);
+    if (data.noComputar !== undefined) updatePayload.noComputar = Boolean(data.noComputar);
+    if (data.esIngreso !== undefined) updatePayload.esIngreso = Boolean(data.esIngreso);
+    if (data.sincronizado !== undefined) updatePayload.sincronizado = Boolean(data.sincronizado);
+
+    return gastosRepository.update(id, updatePayload);
   }
 
   async deleteGasto(id) {

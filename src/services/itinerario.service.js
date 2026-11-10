@@ -84,7 +84,40 @@ function deserializeEventoMeta(evento) {
 class ItinerarioService {
   async getEventosByViaje(viajeId) {
     const eventos = await itinerarioRepository.findByViajeId(viajeId);
-    return eventos.map(deserializeEventoMeta);
+    const results = [];
+    for (const ev of eventos) {
+      const deserialized = deserializeEventoMeta(ev);
+      if (deserialized.costo && Number(deserialized.costo) > 0 && !ev.gastoAsociado) {
+        try {
+          const monedaOriginal = (deserialized.moneda || 'COP').toUpperCase();
+          const montoOriginal = Number(deserialized.costo);
+          const montoCOP = convertCurrency(montoOriginal, monedaOriginal, 'COP');
+          const montoUSD = convertCurrency(montoOriginal, monedaOriginal, 'USD');
+          const tipo = (deserialized.tipo || 'otro').toLowerCase();
+          const gastoCreado = await gastosRepository.create({
+            viajeId: deserialized.viajeId,
+            eventoId: deserialized.id,
+            concepto: `${tipo ? tipo.toUpperCase() + ': ' : ''}${deserialized.titulo}`,
+            categoria: tipo === 'hotel' ? 'alojamiento' : (tipo === 'vuelo' || tipo === 'transporte' ? 'transporte' : (tipo === 'comida' ? 'comida' : 'actividades')),
+            montoOriginal,
+            monedaOriginal,
+            montoCOP,
+            montoUSD,
+            fechaGasto: deserialized.fechaInicio || new Date(),
+            pagadoAdelantado: Boolean(deserialized.pagadoAdelantado),
+            noComputar: !Boolean(deserialized.descontarPresupuesto),
+            esIngreso: false,
+            sincronizado: true
+          });
+          results.push(deserializeEventoMeta({ ...ev, gastoAsociado: gastoCreado }));
+          continue;
+        } catch (err) {
+          console.warn('[ItinerarioService] Error auto-reconciliando gasto para evento:', deserialized.id, err.message);
+        }
+      }
+      results.push(deserialized);
+    }
+    return results;
   }
 
   /**
@@ -203,7 +236,7 @@ class ItinerarioService {
         viajeId,
         eventoId: nuevoEvento.id,
         concepto: `${tipo ? tipo.toUpperCase() + ': ' : ''}${titulo}`,
-        categoria: tipo === 'hotel' ? 'alojamiento' : (tipo === 'vuelo' || tipo === 'transporte' ? 'transporte' : 'actividades'),
+        categoria: tipo === 'hotel' ? 'alojamiento' : (tipo === 'vuelo' || tipo === 'transporte' ? 'transporte' : (tipo === 'comida' ? 'comida' : 'actividades')),
         montoOriginal,
         monedaOriginal,
         montoCOP,
@@ -212,9 +245,11 @@ class ItinerarioService {
         pagadoAdelantado: isAdelantado,
         noComputar: !isDescontar,
         esIngreso: false,
-        tarjetaCredito: data.tarjetaCredito || undefined,
         sincronizado: true
       });
+      if (gastoCreado && data.tarjetaCredito) {
+        gastoCreado = { ...gastoCreado, tarjetaCredito: data.tarjetaCredito };
+      }
     }
 
     const eventoFinal = deserializeEventoMeta({ ...nuevoEvento, gastoAsociado: gastoCreado });
@@ -301,10 +336,12 @@ class ItinerarioService {
         montoUSD: convertCurrency(montoOriginal, monedaOriginal, 'USD'),
         concepto: `${tipoFinal ? tipoFinal.toUpperCase() + ': ' : ''}${data.titulo || updated.titulo}`,
         pagadoAdelantado: newAdelantado,
-        noComputar: !newDescontar,
-        tarjetaCredito: newTarjetaCredito || undefined
+        noComputar: !newDescontar
       };
       gastoSincronizado = await gastosRepository.update(gastoExistente.id, updateGastoData);
+      if (gastoSincronizado && newTarjetaCredito) {
+        gastoSincronizado = { ...gastoSincronizado, tarjetaCredito: newTarjetaCredito };
+      }
     } else if (costoFinal > 0) {
       const monedaOriginal = (data.moneda || existing.moneda || 'COP').toUpperCase();
       const montoCOP = convertCurrency(costoFinal, monedaOriginal, 'COP');
@@ -322,9 +359,11 @@ class ItinerarioService {
         pagadoAdelantado: newAdelantado,
         noComputar: !newDescontar,
         esIngreso: false,
-        tarjetaCredito: newTarjetaCredito || undefined,
         sincronizado: true
       });
+      if (gastoSincronizado && newTarjetaCredito) {
+        gastoSincronizado = { ...gastoSincronizado, tarjetaCredito: newTarjetaCredito };
+      }
     }
 
     const eventoFinal = {

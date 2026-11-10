@@ -44,8 +44,7 @@ class ViajesRepository {
         _count: {
           select: {
             itinerarios: true,
-            gastos: true,
-            documentos: true
+            gastos: true
           }
         }
       }
@@ -62,9 +61,6 @@ class ViajesRepository {
         },
         gastos: {
           orderBy: { fechaGasto: 'desc' }
-        },
-        documentos: {
-          orderBy: { createdAt: 'desc' }
         }
       }
     });
