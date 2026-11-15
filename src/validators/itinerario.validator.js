@@ -72,7 +72,12 @@ const createEventoSchema = z.object({
   roundTripGroupId: z.string().trim().optional().nullable(),
   descontarPresupuesto: z.coerce.boolean().optional().default(true),
   pagadoAdelantado: z.coerce.boolean().optional().default(false),
-  tarjetaCredito: z.string().trim().optional().nullable()
+  tarjetaCredito: z.string().trim().optional().nullable(),
+  cantidadPersonas: z.coerce.number().int().min(1).max(50).optional().default(1),
+  modoCostoPersonas: z.enum(['total', 'por_persona']).optional().default('total'),
+  costoTotal: z.coerce.number().min(0).optional().nullable(),
+  costoPorPersona: z.coerce.number().min(0).optional().nullable(),
+  computarSoloMiParte: z.coerce.boolean().optional().default(true)
 }).refine(data => {
   if (data.fechaInicio && data.fechaFin) {
     return new Date(data.fechaFin) >= new Date(data.fechaInicio);
@@ -152,7 +157,12 @@ const updateEventoSchema = z.object({
   roundTripGroupId: z.string().trim().optional().nullable(),
   descontarPresupuesto: z.coerce.boolean().optional(),
   pagadoAdelantado: z.coerce.boolean().optional(),
-  tarjetaCredito: z.string().trim().optional().nullable()
+  tarjetaCredito: z.string().trim().optional().nullable(),
+  cantidadPersonas: z.coerce.number().int().min(1).max(50).optional(),
+  modoCostoPersonas: z.enum(['total', 'por_persona']).optional(),
+  costoTotal: z.coerce.number().min(0).optional().nullable(),
+  costoPorPersona: z.coerce.number().min(0).optional().nullable(),
+  computarSoloMiParte: z.coerce.boolean().optional()
 }).refine(data => {
   if (data.fechaInicio && data.fechaFin) {
     return new Date(data.fechaFin) >= new Date(data.fechaInicio);

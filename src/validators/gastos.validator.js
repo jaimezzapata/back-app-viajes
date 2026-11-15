@@ -40,6 +40,13 @@ const createGastoSchema = z.object({
   noComputar: z.coerce.boolean().optional().default(false),
   esIngreso: z.coerce.boolean().optional().default(false),
   tarjetaCredito: z.string().trim().optional().nullable(),
+  cantidadPersonas: z.coerce.number().int().min(1).max(50).optional().default(1),
+  modoCostoPersonas: z.enum(['total', 'por_persona']).optional().default('total'),
+  costoTotal: z.coerce.number().min(0).optional().nullable(),
+  costoPorPersona: z.coerce.number().min(0).optional().nullable(),
+  computarSoloMiParte: z.coerce.boolean().optional().default(true),
+  montoCOP: z.coerce.number().min(0).optional().nullable(),
+  montoUSD: z.coerce.number().min(0).optional().nullable(),
   sincronizado: z.coerce.boolean().optional().default(true)
 });
 
@@ -83,6 +90,13 @@ const updateGastoSchema = z.object({
   noComputar: z.coerce.boolean().optional(),
   esIngreso: z.coerce.boolean().optional(),
   tarjetaCredito: z.string().trim().optional().nullable(),
+  cantidadPersonas: z.coerce.number().int().min(1).max(50).optional(),
+  modoCostoPersonas: z.enum(['total', 'por_persona']).optional(),
+  costoTotal: z.coerce.number().min(0).optional().nullable(),
+  costoPorPersona: z.coerce.number().min(0).optional().nullable(),
+  computarSoloMiParte: z.coerce.boolean().optional(),
+  montoCOP: z.coerce.number().min(0).optional().nullable(),
+  montoUSD: z.coerce.number().min(0).optional().nullable(),
   sincronizado: z.coerce.boolean().optional()
 });
 

@@ -3,9 +3,51 @@ const viajesRepository = require('../repositories/viajes.repository');
 const itinerarioService = require('./itinerario.service');
 const { convertCurrency, formatAmount } = require('../utils/currency');
 
+function serializeGastoMeta(concepto, extraMeta = {}) {
+  const meta = typeof extraMeta === 'object' && extraMeta !== null ? { ...extraMeta } : {};
+  if (meta.cantidadPersonas !== undefined && meta.cantidadPersonas !== null) {
+    meta.cantidadPersonas = Math.max(1, Math.round(Number(meta.cantidadPersonas) || 1));
+  }
+  if (meta.costoTotal !== undefined && meta.costoTotal !== null) meta.costoTotal = Number(meta.costoTotal);
+  if (meta.costoPorPersona !== undefined && meta.costoPorPersona !== null) meta.costoPorPersona = Number(meta.costoPorPersona);
+  if (meta.computarSoloMiParte !== undefined && meta.computarSoloMiParte !== null) meta.computarSoloMiParte = Boolean(meta.computarSoloMiParte);
+
+  Object.keys(meta).forEach(k => {
+    if (meta[k] === undefined || meta[k] === null || meta[k] === '') delete meta[k];
+  });
+
+  const cleanConcepto = (concepto || '').replace(/\n?<!--META:.*?:META-->/g, '').trim();
+  if (Object.keys(meta).length === 0) return cleanConcepto;
+  const metaTag = `<!--META:${JSON.stringify(meta)}:META-->`;
+  return `${cleanConcepto}${metaTag}`;
+}
+
 function enrichGastoWithEventoMeta(gasto) {
   if (!gasto) return gasto;
   let tarjetaCredito = gasto.tarjetaCredito || null;
+  let cantidadPersonas = gasto.cantidadPersonas !== undefined ? Math.max(1, Math.round(Number(gasto.cantidadPersonas) || 1)) : 1;
+  let modoCostoPersonas = gasto.modoCostoPersonas || 'total';
+  let computarSoloMiParte = gasto.computarSoloMiParte !== undefined ? Boolean(gasto.computarSoloMiParte) : true;
+  let costoTotal = gasto.costoTotal !== undefined && Number(gasto.costoTotal) > 0 ? Number(gasto.costoTotal) : null;
+  let costoPorPersona = gasto.costoPorPersona !== undefined && Number(gasto.costoPorPersona) > 0 ? Number(gasto.costoPorPersona) : null;
+  let rawConcepto = gasto.concepto || '';
+
+  if (typeof rawConcepto === 'string' && rawConcepto.includes('<!--META:')) {
+    const match = rawConcepto.match(/<!--META:(.*?):META-->/);
+    if (match) {
+      try {
+        const meta = JSON.parse(match[1]);
+        if (!tarjetaCredito && meta.tarjetaCredito) tarjetaCredito = meta.tarjetaCredito;
+        if (meta.cantidadPersonas !== undefined) cantidadPersonas = Math.max(1, Math.round(Number(meta.cantidadPersonas) || 1));
+        if (meta.modoCostoPersonas) modoCostoPersonas = meta.modoCostoPersonas;
+        if (meta.computarSoloMiParte !== undefined) computarSoloMiParte = Boolean(meta.computarSoloMiParte);
+        if (costoTotal === null && meta.costoTotal !== undefined) costoTotal = Number(meta.costoTotal);
+        if (costoPorPersona === null && meta.costoPorPersona !== undefined) costoPorPersona = Number(meta.costoPorPersona);
+      } catch {}
+    }
+    rawConcepto = rawConcepto.replace(/\n?<!--META:.*?:META-->/g, '').trim();
+  }
+
   if (gasto.evento && gasto.evento.notas && gasto.evento.notas.includes('<!--META:')) {
     const match = gasto.evento.notas.match(/<!--META:(.*?):META-->/);
     if (match) {
@@ -14,12 +56,51 @@ function enrichGastoWithEventoMeta(gasto) {
         if (!tarjetaCredito && meta.tarjetaCredito) {
           tarjetaCredito = meta.tarjetaCredito;
         }
+        if (meta.cantidadPersonas !== undefined) {
+          cantidadPersonas = Math.max(1, Math.round(Number(meta.cantidadPersonas) || 1));
+        }
+        if (meta.modoCostoPersonas) {
+          modoCostoPersonas = meta.modoCostoPersonas;
+        }
+        if (meta.computarSoloMiParte !== undefined) {
+          computarSoloMiParte = Boolean(meta.computarSoloMiParte);
+        }
+        if (costoTotal === null && meta.costoTotal !== undefined) {
+          costoTotal = Number(meta.costoTotal);
+        }
+        if (costoPorPersona === null && meta.costoPorPersona !== undefined) {
+          costoPorPersona = Number(meta.costoPorPersona);
+        }
       } catch {}
     }
   }
+
+  const rawMontoOrig = Number(gasto.montoOriginal) || 0;
+  const finalCostoTotal = costoTotal && costoTotal > 0 ? costoTotal : rawMontoOrig;
+  const finalCostoPorPersona = costoPorPersona && costoPorPersona > 0
+    ? costoPorPersona
+    : (cantidadPersonas > 1 ? Number((finalCostoTotal / cantidadPersonas).toFixed(2)) : finalCostoTotal);
+
+  const rawCOP = Number(gasto.montoCOP) || 0;
+  const rawUSD = Number(gasto.montoUSD) || 0;
+  const montoTotalCOP = rawCOP;
+  const montoPorPersonaCOP = cantidadPersonas > 1 ? Math.round(rawCOP / cantidadPersonas) : rawCOP;
+  const montoTotalUSD = rawUSD;
+  const montoPorPersonaUSD = cantidadPersonas > 1 ? Number((rawUSD / cantidadPersonas).toFixed(2)) : rawUSD;
+
   return {
     ...gasto,
-    ...(tarjetaCredito ? { tarjetaCredito } : {})
+    concepto: rawConcepto,
+    ...(tarjetaCredito ? { tarjetaCredito } : {}),
+    cantidadPersonas,
+    modoCostoPersonas,
+    computarSoloMiParte,
+    costoTotal: finalCostoTotal,
+    costoPorPersona: finalCostoPorPersona,
+    montoTotalCOP,
+    montoPorPersonaCOP,
+    montoTotalUSD,
+    montoPorPersonaUSD
   };
 }
 
@@ -48,7 +129,18 @@ class GastosService {
       sincronizado
     } = data;
 
-    const monto = Number(montoOriginal);
+    const paxCount = Math.max(1, Math.round(Number(data.cantidadPersonas) || 1));
+    const modoPax = data.modoCostoPersonas || 'total';
+    const isSoloMiParte = data.computarSoloMiParte !== undefined ? Boolean(data.computarSoloMiParte) : true;
+    const rawMonto = Number(montoOriginal);
+    const finalCostoTotal = data.costoTotal !== undefined && Number(data.costoTotal) > 0
+      ? Number(data.costoTotal)
+      : (modoPax === 'por_persona' && paxCount > 1 ? Number((rawMonto * paxCount).toFixed(2)) : rawMonto);
+    const finalCostoPorPersona = data.costoPorPersona !== undefined && Number(data.costoPorPersona) > 0
+      ? Number(data.costoPorPersona)
+      : (paxCount > 1 ? Number((finalCostoTotal / paxCount).toFixed(2)) : finalCostoTotal);
+
+    const monto = finalCostoTotal;
     const moneda = (monedaOriginal || 'COP').toUpperCase();
 
     // Si el cliente ya capturó la tasa y monto exactos en vivo en el momento de la compra, respetarlos
@@ -62,9 +154,18 @@ class GastosService {
       ? Number(tasaCambioFecha)
       : (monto > 0 && moneda !== 'COP' ? Number((montoCOP / monto).toFixed(4)) : 1.0);
 
-    return gastosRepository.create({
+    const conceptoConMeta = serializeGastoMeta(concepto, {
+      tarjetaCredito: data.tarjetaCredito || undefined,
+      cantidadPersonas: paxCount > 1 ? paxCount : undefined,
+      modoCostoPersonas: paxCount > 1 ? modoPax : undefined,
+      costoTotal: paxCount > 1 ? finalCostoTotal : undefined,
+      costoPorPersona: paxCount > 1 ? finalCostoPorPersona : undefined,
+      computarSoloMiParte: paxCount > 1 ? isSoloMiParte : undefined
+    });
+
+    const created = await gastosRepository.create({
       viajeId,
-      concepto,
+      concepto: conceptoConMeta,
       categoria: categoria || 'otros',
       montoOriginal: formatAmount(monto, moneda),
       monedaOriginal: moneda,
@@ -79,6 +180,8 @@ class GastosService {
       esIngreso: Boolean(esIngreso),
       sincronizado: sincronizado !== undefined ? Boolean(sincronizado) : true
     });
+
+    return enrichGastoWithEventoMeta(created);
   }
 
   async updateGasto(id, data) {

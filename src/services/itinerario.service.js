@@ -8,6 +8,10 @@ function serializeEventoMeta(notas, extraMeta = {}) {
   if (meta.escalaMayor24h !== undefined && meta.escalaMayor24h !== null) meta.escalaMayor24h = Boolean(meta.escalaMayor24h);
   if (meta.descontarPresupuesto !== undefined && meta.descontarPresupuesto !== null) meta.descontarPresupuesto = Boolean(meta.descontarPresupuesto);
   if (meta.pagadoAdelantado !== undefined && meta.pagadoAdelantado !== null) meta.pagadoAdelantado = Boolean(meta.pagadoAdelantado);
+  if (meta.cantidadPersonas !== undefined && meta.cantidadPersonas !== null) meta.cantidadPersonas = Math.max(1, Math.round(Number(meta.cantidadPersonas) || 1));
+  if (meta.costoTotal !== undefined && meta.costoTotal !== null) meta.costoTotal = Number(meta.costoTotal);
+  if (meta.costoPorPersona !== undefined && meta.costoPorPersona !== null) meta.costoPorPersona = Number(meta.costoPorPersona);
+  if (meta.computarSoloMiParte !== undefined && meta.computarSoloMiParte !== null) meta.computarSoloMiParte = Boolean(meta.computarSoloMiParte);
   
   Object.keys(meta).forEach(k => {
     if (meta[k] === undefined || meta[k] === null || meta[k] === '') delete meta[k];
@@ -29,6 +33,11 @@ function deserializeEventoMeta(evento) {
   let descontarPresupuesto = evento.descontarPresupuesto !== undefined ? Boolean(evento.descontarPresupuesto) : true;
   let pagadoAdelantado = evento.pagadoAdelantado !== undefined ? Boolean(evento.pagadoAdelantado) : false;
   let tarjetaCredito = evento.tarjetaCredito || null;
+  let cantidadPersonas = evento.cantidadPersonas !== undefined ? Math.max(1, Math.round(Number(evento.cantidadPersonas) || 1)) : 1;
+  let modoCostoPersonas = evento.modoCostoPersonas || 'total';
+  let computarSoloMiParte = evento.computarSoloMiParte !== undefined ? Boolean(evento.computarSoloMiParte) : true;
+  let costoTotal = evento.costoTotal !== undefined && Number(evento.costoTotal) > 0 ? Number(evento.costoTotal) : null;
+  let costoPorPersona = evento.costoPorPersona !== undefined && Number(evento.costoPorPersona) > 0 ? Number(evento.costoPorPersona) : null;
   let notas = evento.notas || null;
 
   // Si tiene gastoAsociado, deducir los flags contables reales
@@ -57,6 +66,11 @@ function deserializeEventoMeta(evento) {
         if (meta.descontarPresupuesto !== undefined) descontarPresupuesto = Boolean(meta.descontarPresupuesto);
         if (meta.pagadoAdelantado !== undefined) pagadoAdelantado = Boolean(meta.pagadoAdelantado);
         if (meta.tarjetaCredito) tarjetaCredito = meta.tarjetaCredito;
+        if (meta.cantidadPersonas !== undefined) cantidadPersonas = Math.max(1, Math.round(Number(meta.cantidadPersonas) || 1));
+        if (meta.modoCostoPersonas) modoCostoPersonas = meta.modoCostoPersonas;
+        if (meta.computarSoloMiParte !== undefined) computarSoloMiParte = Boolean(meta.computarSoloMiParte);
+        if (costoTotal === null && meta.costoTotal !== undefined) costoTotal = Number(meta.costoTotal);
+        if (costoPorPersona === null && meta.costoPorPersona !== undefined) costoPorPersona = Number(meta.costoPorPersona);
       } catch {}
       notas = notas.replace(/\n?<!--META:.*?:META-->/g, '').trim() || null;
     }
@@ -66,6 +80,12 @@ function deserializeEventoMeta(evento) {
   if (horasEscala !== null && horasEscala > 24) {
     escalaMayor24h = true;
   }
+
+  const rawCosto = Number(evento.costo) || 0;
+  const finalCostoTotal = costoTotal && costoTotal > 0 ? costoTotal : rawCosto;
+  const finalCostoPorPersona = costoPorPersona && costoPorPersona > 0
+    ? costoPorPersona
+    : (cantidadPersonas > 1 ? Number((finalCostoTotal / cantidadPersonas).toFixed(2)) : finalCostoTotal);
 
   return {
     ...evento,
@@ -77,7 +97,12 @@ function deserializeEventoMeta(evento) {
     roundTripGroupId,
     descontarPresupuesto,
     pagadoAdelantado,
-    tarjetaCredito
+    tarjetaCredito,
+    cantidadPersonas,
+    modoCostoPersonas,
+    computarSoloMiParte,
+    costoTotal: finalCostoTotal,
+    costoPorPersona: finalCostoPorPersona
   };
 }
 
@@ -196,6 +221,18 @@ class ItinerarioService {
     const isDescontar = descontarPresupuesto !== undefined ? Boolean(descontarPresupuesto) : true;
     const isAdelantado = Boolean(pagadoAdelantado);
 
+    const paxCount = Math.max(1, Math.round(Number(data.cantidadPersonas) || 1));
+    const modoPax = data.modoCostoPersonas || 'total';
+    const isSoloMiParte = data.computarSoloMiParte !== undefined ? Boolean(data.computarSoloMiParte) : true;
+    const rawCostoInput = costo ? Number(costo) : 0;
+
+    let finalCostoTotal = data.costoTotal !== undefined && Number(data.costoTotal) > 0
+      ? Number(data.costoTotal)
+      : (modoPax === 'por_persona' && paxCount > 1 ? Number((rawCostoInput * paxCount).toFixed(2)) : rawCostoInput);
+    let finalCostoPorPersona = data.costoPorPersona !== undefined && Number(data.costoPorPersona) > 0
+      ? Number(data.costoPorPersona)
+      : (paxCount > 1 ? Number((finalCostoTotal / paxCount).toFixed(2)) : finalCostoTotal);
+
     const notasConMeta = serializeEventoMeta(notas, {
       horasEscala,
       escalaMayor24h: isMayor24,
@@ -204,7 +241,12 @@ class ItinerarioService {
       roundTripGroupId,
       descontarPresupuesto: isDescontar,
       pagadoAdelantado: isAdelantado,
-      tarjetaCredito: data.tarjetaCredito || undefined
+      tarjetaCredito: data.tarjetaCredito || undefined,
+      cantidadPersonas: paxCount,
+      modoCostoPersonas: modoPax,
+      costoTotal: finalCostoTotal > 0 ? finalCostoTotal : undefined,
+      costoPorPersona: finalCostoPorPersona > 0 ? finalCostoPorPersona : undefined,
+      computarSoloMiParte: isSoloMiParte
     });
 
     const dataPrisma = { ...data };
@@ -216,19 +258,24 @@ class ItinerarioService {
     delete dataPrisma.descontarPresupuesto;
     delete dataPrisma.pagadoAdelantado;
     delete dataPrisma.tarjetaCredito;
+    delete dataPrisma.cantidadPersonas;
+    delete dataPrisma.modoCostoPersonas;
+    delete dataPrisma.costoTotal;
+    delete dataPrisma.costoPorPersona;
+    delete dataPrisma.computarSoloMiParte;
     dataPrisma.notas = notasConMeta;
     dataPrisma.fechaInicio = startDate;
     dataPrisma.fechaFin = endDate;
-    dataPrisma.costo = costo ? Number(costo) : null;
+    dataPrisma.costo = finalCostoTotal > 0 ? finalCostoTotal : null;
 
     // Guardar evento
     const nuevoEvento = await itinerarioRepository.create(dataPrisma);
 
     // Interoperabilidad con Módulo de Gastos (RF 3.2)
     let gastoCreado = null;
-    if (costo && Number(costo) > 0) {
+    if (finalCostoTotal > 0) {
       const monedaOriginal = (moneda || 'COP').toUpperCase();
-      const montoOriginal = Number(costo);
+      const montoOriginal = finalCostoTotal;
       const montoCOP = convertCurrency(montoOriginal, monedaOriginal, 'COP');
       const montoUSD = convertCurrency(montoOriginal, monedaOriginal, 'USD');
 
@@ -247,8 +294,16 @@ class ItinerarioService {
         esIngreso: false,
         sincronizado: true
       });
-      if (gastoCreado && data.tarjetaCredito) {
-        gastoCreado = { ...gastoCreado, tarjetaCredito: data.tarjetaCredito };
+      if (gastoCreado) {
+        gastoCreado = {
+          ...gastoCreado,
+          ...(data.tarjetaCredito ? { tarjetaCredito: data.tarjetaCredito } : {}),
+          cantidadPersonas: paxCount,
+          modoCostoPersonas: modoPax,
+          costoTotal: finalCostoTotal,
+          costoPorPersona: finalCostoPorPersona,
+          computarSoloMiParte: isSoloMiParte
+        };
       }
     }
 
@@ -277,7 +332,24 @@ class ItinerarioService {
     const newDescontar = data.descontarPresupuesto !== undefined ? Boolean(data.descontarPresupuesto) : (currentMeta?.descontarPresupuesto !== undefined ? currentMeta.descontarPresupuesto : true);
     const newAdelantado = data.pagadoAdelantado !== undefined ? Boolean(data.pagadoAdelantado) : (currentMeta?.pagadoAdelantado !== undefined ? currentMeta.pagadoAdelantado : false);
     const newTarjetaCredito = data.tarjetaCredito !== undefined ? data.tarjetaCredito : currentMeta?.tarjetaCredito;
+    const newPaxCount = data.cantidadPersonas !== undefined
+      ? Math.max(1, Math.round(Number(data.cantidadPersonas) || 1))
+      : Math.max(1, Math.round(Number(currentMeta?.cantidadPersonas) || 1));
+    const newModoPax = data.modoCostoPersonas !== undefined ? data.modoCostoPersonas : (currentMeta?.modoCostoPersonas || 'total');
+    const newSoloMiParte = data.computarSoloMiParte !== undefined
+      ? Boolean(data.computarSoloMiParte)
+      : (currentMeta?.computarSoloMiParte !== undefined ? Boolean(currentMeta.computarSoloMiParte) : true);
     const rawNotas = data.notas !== undefined ? data.notas : currentMeta?.notas;
+
+    const rawCostoVal = data.costo !== undefined ? Number(data.costo || 0) : Number(existing.costo || 0);
+    let finalCostoTotal = data.costoTotal !== undefined && Number(data.costoTotal) > 0
+      ? Number(data.costoTotal)
+      : (newModoPax === 'por_persona' && newPaxCount > 1 && data.costoPorPersona === undefined
+        ? Number((rawCostoVal * newPaxCount).toFixed(2))
+        : rawCostoVal);
+    let finalCostoPorPersona = data.costoPorPersona !== undefined && Number(data.costoPorPersona) > 0
+      ? Number(data.costoPorPersona)
+      : (newPaxCount > 1 ? Number((finalCostoTotal / newPaxCount).toFixed(2)) : finalCostoTotal);
 
     let startDate = data.fechaInicio ? new Date(data.fechaInicio) : existing.fechaInicio;
     let endDate = data.fechaFin ? new Date(data.fechaFin) : existing.fechaFin;
@@ -293,6 +365,11 @@ class ItinerarioService {
     delete dataPrisma.descontarPresupuesto;
     delete dataPrisma.pagadoAdelantado;
     delete dataPrisma.tarjetaCredito;
+    delete dataPrisma.cantidadPersonas;
+    delete dataPrisma.modoCostoPersonas;
+    delete dataPrisma.costoTotal;
+    delete dataPrisma.costoPorPersona;
+    delete dataPrisma.computarSoloMiParte;
     dataPrisma.notas = serializeEventoMeta(rawNotas, {
       horasEscala: newHorasEscala,
       escalaMayor24h: newMayor24,
@@ -301,18 +378,23 @@ class ItinerarioService {
       roundTripGroupId: newRoundTripGroupId,
       descontarPresupuesto: newDescontar,
       pagadoAdelantado: newAdelantado,
-      tarjetaCredito: newTarjetaCredito || undefined
+      tarjetaCredito: newTarjetaCredito || undefined,
+      cantidadPersonas: newPaxCount,
+      modoCostoPersonas: newModoPax,
+      costoTotal: finalCostoTotal > 0 ? finalCostoTotal : undefined,
+      costoPorPersona: finalCostoPorPersona > 0 ? finalCostoPorPersona : undefined,
+      computarSoloMiParte: newSoloMiParte
     });
     dataPrisma.fechaInicio = startDate;
     dataPrisma.fechaFin = endDate;
-    if (data.costo !== undefined) {
-      dataPrisma.costo = data.costo ? Number(data.costo) : null;
+    if (data.costo !== undefined || data.costoTotal !== undefined) {
+      dataPrisma.costo = finalCostoTotal > 0 ? finalCostoTotal : null;
     }
 
     const updated = await itinerarioRepository.update(id, dataPrisma);
 
     // Sincronizar con gasto asociado si existe, o crearlo si se introdujo costo
-    const costoFinal = data.costo !== undefined ? Number(data.costo || 0) : Number(existing.costo || 0);
+    const costoFinal = finalCostoTotal;
     const tipoFinal = data.tipo || existing.tipo;
     const categoriaFinal = tipoFinal === 'hotel'
       ? 'alojamiento'
@@ -339,8 +421,16 @@ class ItinerarioService {
         noComputar: !newDescontar
       };
       gastoSincronizado = await gastosRepository.update(gastoExistente.id, updateGastoData);
-      if (gastoSincronizado && newTarjetaCredito) {
-        gastoSincronizado = { ...gastoSincronizado, tarjetaCredito: newTarjetaCredito };
+      if (gastoSincronizado) {
+        gastoSincronizado = {
+          ...gastoSincronizado,
+          ...(newTarjetaCredito ? { tarjetaCredito: newTarjetaCredito } : {}),
+          cantidadPersonas: newPaxCount,
+          modoCostoPersonas: newModoPax,
+          costoTotal: finalCostoTotal,
+          costoPorPersona: finalCostoPorPersona,
+          computarSoloMiParte: newSoloMiParte
+        };
       }
     } else if (costoFinal > 0) {
       const monedaOriginal = (data.moneda || existing.moneda || 'COP').toUpperCase();
@@ -361,8 +451,16 @@ class ItinerarioService {
         esIngreso: false,
         sincronizado: true
       });
-      if (gastoSincronizado && newTarjetaCredito) {
-        gastoSincronizado = { ...gastoSincronizado, tarjetaCredito: newTarjetaCredito };
+      if (gastoSincronizado) {
+        gastoSincronizado = {
+          ...gastoSincronizado,
+          ...(newTarjetaCredito ? { tarjetaCredito: newTarjetaCredito } : {}),
+          cantidadPersonas: newPaxCount,
+          modoCostoPersonas: newModoPax,
+          costoTotal: finalCostoTotal,
+          costoPorPersona: finalCostoPorPersona,
+          computarSoloMiParte: newSoloMiParte
+        };
       }
     }
 
