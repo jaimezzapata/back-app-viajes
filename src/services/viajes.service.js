@@ -1,13 +1,14 @@
 const viajesRepository = require('../repositories/viajes.repository');
 const { prisma } = require('../config/prisma');
 
-function serializeViajeMeta(descripcion, origen, escalas, tipoViaje, destinosMultidestino, categoriasPresupuesto) {
+function serializeViajeMeta(descripcion, origen, escalas, tipoViaje, destinosMultidestino, categoriasPresupuesto, checklist) {
   const meta = {};
   if (origen) meta.origen = origen;
   if (escalas) meta.escalas = escalas;
   if (tipoViaje) meta.tipoViaje = tipoViaje;
   if (destinosMultidestino && Array.isArray(destinosMultidestino)) meta.destinosMultidestino = destinosMultidestino;
   if (categoriasPresupuesto && Array.isArray(categoriasPresupuesto)) meta.categoriasPresupuesto = categoriasPresupuesto;
+  if (checklist && Array.isArray(checklist)) meta.checklist = checklist;
 
   if (Object.keys(meta).length === 0) return descripcion || null;
   const metaTag = `\n<!--META:${JSON.stringify(meta)}:META-->`;
@@ -22,6 +23,7 @@ function deserializeViajeMeta(viaje) {
   let tipoViaje = viaje.tipoViaje || 'unico';
   let destinosMultidestino = viaje.destinosMultidestino || [];
   let categoriasPresupuesto = viaje.categoriasPresupuesto || null;
+  let checklist = Array.isArray(viaje.checklist) ? viaje.checklist : null;
   let descripcion = viaje.descripcion || null;
 
   if (descripcion && descripcion.includes('<!--META:')) {
@@ -34,6 +36,7 @@ function deserializeViajeMeta(viaje) {
         if (meta.tipoViaje) tipoViaje = meta.tipoViaje;
         if (meta.destinosMultidestino) destinosMultidestino = meta.destinosMultidestino;
         if (meta.categoriasPresupuesto) categoriasPresupuesto = meta.categoriasPresupuesto;
+        if (Array.isArray(meta.checklist)) checklist = meta.checklist;
       } catch {}
       descripcion = descripcion.replace(/\n?<!--META:.*?:META-->/g, '').trim() || null;
     }
@@ -46,7 +49,8 @@ function deserializeViajeMeta(viaje) {
     escalas,
     tipoViaje,
     destinosMultidestino,
-    ...(categoriasPresupuesto ? { categoriasPresupuesto } : {})
+    ...(categoriasPresupuesto ? { categoriasPresupuesto } : {}),
+    ...(checklist ? { checklist } : {})
   };
 }
 
@@ -86,13 +90,23 @@ class ViajesService {
       monedaBase,
       monedaReferencia,
       monedaLocal,
-      presupuestosPorCategoria
+      presupuestosPorCategoria,
+      categoriasPresupuesto,
+      checklist
     } = data;
 
     const startDate = new Date(fechaInicio);
     const endDate = new Date(fechaFin);
 
-    const descConMeta = serializeViajeMeta(descripcion, origen, escalas, tipoViaje, destinosMultidestino);
+    const descConMeta = serializeViajeMeta(
+      descripcion,
+      origen,
+      escalas,
+      tipoViaje,
+      destinosMultidestino,
+      categoriasPresupuesto,
+      checklist
+    );
 
     // Validar de forma segura si el usuarioId es un UUID válido y existe en la base de datos
     let validUsuarioId = null;
@@ -163,6 +177,7 @@ class ViajesService {
     const newCategoriasPresupuesto = data.categoriasPresupuesto !== undefined
       ? data.categoriasPresupuesto
       : (data.presupuestosPorCategoria !== undefined ? data.presupuestosPorCategoria : currentMeta?.categoriasPresupuesto);
+    const newChecklist = data.checklist !== undefined ? data.checklist : currentMeta?.checklist;
     const rawDesc = data.descripcion !== undefined ? data.descripcion : currentMeta?.descripcion;
 
     const updateData = { ...data };
@@ -176,7 +191,8 @@ class ViajesService {
       newEscalas,
       newTipoViaje,
       newDestinosMultidestino,
-      newCategoriasPresupuesto
+      newCategoriasPresupuesto,
+      newChecklist
     );
     delete updateData.origen;
     delete updateData.escalas;
@@ -184,6 +200,7 @@ class ViajesService {
     delete updateData.destinosMultidestino;
     delete updateData.presupuestosPorCategoria;
     delete updateData.categoriasPresupuesto;
+    delete updateData.checklist;
 
     await viajesRepository.update(id, updateData);
 

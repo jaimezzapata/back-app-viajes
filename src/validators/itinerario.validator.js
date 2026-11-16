@@ -1,6 +1,6 @@
 const { z } = require('zod');
 
-const TIPOS_VALIDOS = ['vuelo', 'hotel', 'atraccion', 'transporte', 'comida', 'otro'];
+const TIPOS_VALIDOS = ['vuelo', 'hotel', 'atraccion', 'transporte', 'comida', 'impuestos', 'permisos', 'tramite', 'otro'];
 
 const createEventoSchema = z.object({
   titulo: z

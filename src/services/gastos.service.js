@@ -190,8 +190,33 @@ class GastosService {
       throw new Error('Gasto no encontrado');
     }
 
-    const monto = data.montoOriginal !== undefined ? Number(data.montoOriginal) : existing.montoOriginal;
-    const moneda = data.monedaOriginal || existing.monedaOriginal;
+    const currentEnriched = enrichGastoWithEventoMeta(existing);
+
+    const paxCount = data.cantidadPersonas !== undefined
+      ? Math.max(1, Math.round(Number(data.cantidadPersonas) || 1))
+      : Math.max(1, Math.round(Number(currentEnriched.cantidadPersonas) || 1));
+    const modoPax = data.modoCostoPersonas !== undefined
+      ? data.modoCostoPersonas
+      : (currentEnriched.modoCostoPersonas || 'total');
+    const isSoloMiParte = data.computarSoloMiParte !== undefined
+      ? Boolean(data.computarSoloMiParte)
+      : (currentEnriched.computarSoloMiParte !== undefined ? Boolean(currentEnriched.computarSoloMiParte) : true);
+    const tarjetaCredito = data.tarjetaCredito !== undefined
+      ? (data.tarjetaCredito || null)
+      : (currentEnriched.tarjetaCredito || null);
+
+    const rawMonto = data.montoOriginal !== undefined ? Number(data.montoOriginal) : Number(existing.montoOriginal);
+    const finalCostoTotal = data.costoTotal !== undefined && Number(data.costoTotal) > 0
+      ? Number(data.costoTotal)
+      : (modoPax === 'por_persona' && paxCount > 1 && data.costoPorPersona === undefined
+        ? Number((rawMonto * paxCount).toFixed(2))
+        : rawMonto);
+    const finalCostoPorPersona = data.costoPorPersona !== undefined && Number(data.costoPorPersona) > 0
+      ? Number(data.costoPorPersona)
+      : (paxCount > 1 ? Number((finalCostoTotal / paxCount).toFixed(2)) : finalCostoTotal);
+
+    const monto = finalCostoTotal;
+    const moneda = (data.monedaOriginal || existing.monedaOriginal || 'COP').toUpperCase();
     const tasa = data.tasaCambioFecha !== undefined ? data.tasaCambioFecha : existing.tasaCambioFecha;
 
     const clientCOP = data.montoCOP !== undefined && data.montoCOP !== null ? Number(data.montoCOP) : null;
@@ -200,24 +225,73 @@ class GastosService {
     const montoCOP = clientCOP !== null ? clientCOP : convertCurrency(monto, moneda, 'COP', tasa);
     const montoUSD = clientUSD !== null ? clientUSD : convertCurrency(monto, moneda, 'USD', tasa);
 
+    const calculatedRate = tasa
+      ? Number(tasa)
+      : (monto > 0 && moneda !== 'COP' ? Number((montoCOP / monto).toFixed(4)) : 1.0);
+
+    const rawConcepto = data.concepto !== undefined ? data.concepto : currentEnriched.concepto;
+    const conceptoConMeta = serializeGastoMeta(rawConcepto, {
+      tarjetaCredito: tarjetaCredito || undefined,
+      cantidadPersonas: paxCount > 1 ? paxCount : undefined,
+      modoCostoPersonas: paxCount > 1 ? modoPax : undefined,
+      costoTotal: paxCount > 1 ? finalCostoTotal : undefined,
+      costoPorPersona: paxCount > 1 ? finalCostoPorPersona : undefined,
+      computarSoloMiParte: paxCount > 1 ? isSoloMiParte : undefined
+    });
+
     const updatePayload = {
+      concepto: conceptoConMeta,
       montoOriginal: formatAmount(monto, moneda),
       monedaOriginal: moneda,
       montoCOP,
       montoUSD,
+      tasaCambioFecha: calculatedRate,
       fechaGasto: data.fechaGasto ? new Date(data.fechaGasto) : existing.fechaGasto,
       timestampReal: data.timestampReal ? new Date(data.timestampReal) : existing.timestampReal
     };
-    if (data.concepto !== undefined) updatePayload.concepto = data.concepto;
     if (data.categoria !== undefined) updatePayload.categoria = data.categoria;
-    if (data.tasaCambioFecha !== undefined) updatePayload.tasaCambioFecha = data.tasaCambioFecha;
     if (data.conversionPendiente !== undefined) updatePayload.conversionPendiente = Boolean(data.conversionPendiente);
     if (data.pagadoAdelantado !== undefined) updatePayload.pagadoAdelantado = Boolean(data.pagadoAdelantado);
     if (data.noComputar !== undefined) updatePayload.noComputar = Boolean(data.noComputar);
     if (data.esIngreso !== undefined) updatePayload.esIngreso = Boolean(data.esIngreso);
     if (data.sincronizado !== undefined) updatePayload.sincronizado = Boolean(data.sincronizado);
 
-    return gastosRepository.update(id, updatePayload);
+    const updated = await gastosRepository.update(id, updatePayload);
+
+    // Si este gasto está asociado a un evento del itinerario, sincronizar también el evento
+    if (existing.eventoId) {
+      try {
+        const itinerarioRepository = require('../repositories/itinerario.repository');
+        const ev = await itinerarioRepository.findById(existing.eventoId);
+        if (ev) {
+          const evMeta = itinerarioService.deserializeEventoMeta(ev);
+          const newEvNotas = itinerarioService.serializeEventoMeta(evMeta.notas, {
+            horasEscala: evMeta.horasEscala,
+            escalaMayor24h: evMeta.escalaMayor24h,
+            tipoTrayecto: evMeta.tipoTrayecto,
+            tramo: evMeta.tramo,
+            roundTripGroupId: evMeta.roundTripGroupId,
+            descontarPresupuesto: data.noComputar !== undefined ? !Boolean(data.noComputar) : evMeta.descontarPresupuesto,
+            pagadoAdelantado: data.pagadoAdelantado !== undefined ? Boolean(data.pagadoAdelantado) : evMeta.pagadoAdelantado,
+            tarjetaCredito: tarjetaCredito || undefined,
+            cantidadPersonas: paxCount,
+            modoCostoPersonas: modoPax,
+            costoTotal: finalCostoTotal,
+            costoPorPersona: finalCostoPorPersona,
+            computarSoloMiParte: isSoloMiParte
+          });
+          await itinerarioRepository.update(existing.eventoId, {
+            costo: finalCostoTotal,
+            moneda,
+            notas: newEvNotas
+          });
+        }
+      } catch (err) {
+        console.warn('[GastosService] Error sincronizando evento asociado al editar gasto:', err.message);
+      }
+    }
+
+    return enrichGastoWithEventoMeta(updated);
   }
 
   async deleteGasto(id) {
@@ -297,7 +371,7 @@ class GastosService {
     const presupuestosConfigurados = viaje.presupuestos || [];
     const semaforoCategorias = [];
 
-    const todasCategorias = ['transporte', 'alojamiento', 'comida', 'actividades', 'compras', 'otros'];
+    const todasCategorias = ['transporte', 'alojamiento', 'comida', 'actividades', 'compras', 'impuestos', 'otros'];
     for (const cat of todasCategorias) {
       const config = presupuestosConfigurados.find(p => p.categoria.toLowerCase() === cat.toLowerCase());
       const limite = config ? config.limite : 0;

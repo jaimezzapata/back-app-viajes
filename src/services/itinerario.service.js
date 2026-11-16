@@ -2,6 +2,15 @@ const itinerarioRepository = require('../repositories/itinerario.repository');
 const gastosRepository = require('../repositories/gastos.repository');
 const { convertCurrency } = require('../utils/currency');
 
+function mapTipoToCategoriaGasto(tipo) {
+  const t = (tipo || 'otro').toLowerCase();
+  if (t === 'hotel') return 'alojamiento';
+  if (t === 'vuelo' || t === 'transporte') return 'transporte';
+  if (t === 'comida') return 'comida';
+  if (t === 'impuestos' || t === 'permisos' || t === 'tramite') return 'impuestos';
+  return 'actividades';
+}
+
 function serializeEventoMeta(notas, extraMeta = {}) {
   const meta = typeof extraMeta === 'object' && extraMeta !== null ? { ...extraMeta } : {};
   if (meta.horasEscala !== undefined && meta.horasEscala !== null) meta.horasEscala = Number(meta.horasEscala);
@@ -123,7 +132,7 @@ class ItinerarioService {
             viajeId: deserialized.viajeId,
             eventoId: deserialized.id,
             concepto: `${tipo ? tipo.toUpperCase() + ': ' : ''}${deserialized.titulo}`,
-            categoria: tipo === 'hotel' ? 'alojamiento' : (tipo === 'vuelo' || tipo === 'transporte' ? 'transporte' : (tipo === 'comida' ? 'comida' : 'actividades')),
+            categoria: mapTipoToCategoriaGasto(tipo),
             montoOriginal,
             monedaOriginal,
             montoCOP,
@@ -283,7 +292,7 @@ class ItinerarioService {
         viajeId,
         eventoId: nuevoEvento.id,
         concepto: `${tipo ? tipo.toUpperCase() + ': ' : ''}${titulo}`,
-        categoria: tipo === 'hotel' ? 'alojamiento' : (tipo === 'vuelo' || tipo === 'transporte' ? 'transporte' : (tipo === 'comida' ? 'comida' : 'actividades')),
+        categoria: mapTipoToCategoriaGasto(tipo),
         montoOriginal,
         monedaOriginal,
         montoCOP,
@@ -396,13 +405,7 @@ class ItinerarioService {
     // Sincronizar con gasto asociado si existe, o crearlo si se introdujo costo
     const costoFinal = finalCostoTotal;
     const tipoFinal = data.tipo || existing.tipo;
-    const categoriaFinal = tipoFinal === 'hotel'
-      ? 'alojamiento'
-      : (tipoFinal === 'vuelo' || tipoFinal === 'transporte'
-        ? 'transporte'
-        : (tipoFinal === 'comida'
-          ? 'comida'
-          : 'actividades'));
+    const categoriaFinal = mapTipoToCategoriaGasto(tipoFinal);
 
     const gastoExistente = await gastosRepository.findByEventoId(id);
 
