@@ -92,9 +92,12 @@ function deserializeEventoMeta(evento) {
 
   const rawCosto = Number(evento.costo) || 0;
   const finalCostoTotal = costoTotal && costoTotal > 0 ? costoTotal : rawCosto;
-  const finalCostoPorPersona = costoPorPersona && costoPorPersona > 0
-    ? costoPorPersona
-    : (cantidadPersonas > 1 ? Number((finalCostoTotal / cantidadPersonas).toFixed(2)) : finalCostoTotal);
+  const isHotel = (evento.tipo || '').trim().toLowerCase() === 'hotel';
+  const finalCostoPorPersona = isHotel
+    ? finalCostoTotal
+    : (costoPorPersona && costoPorPersona > 0
+      ? costoPorPersona
+      : (cantidadPersonas > 1 ? Number((finalCostoTotal / cantidadPersonas).toFixed(2)) : finalCostoTotal));
 
   return {
     ...evento,

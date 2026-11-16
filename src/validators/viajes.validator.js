@@ -44,6 +44,13 @@ const createViajeSchema = z.object({
     .number({ invalid_type_error: 'El presupuesto total debe ser numérico' })
     .min(0, 'El presupuesto total no puede ser negativo')
     .default(0),
+  presupuestoPersonas: z
+    .coerce
+    .number({ invalid_type_error: 'La cantidad de personas del presupuesto debe ser numérica' })
+    .int()
+    .min(1, 'El presupuesto debe ser para al menos 1 persona')
+    .optional()
+    .default(1),
   monedaBase: z
     .string()
     .trim()
@@ -96,6 +103,12 @@ const updateViajeSchema = z.object({
     .coerce
     .number({ invalid_type_error: 'El presupuesto total debe ser numérico' })
     .min(0, 'El presupuesto no puede ser negativo')
+    .optional(),
+  presupuestoPersonas: z
+    .coerce
+    .number({ invalid_type_error: 'La cantidad de personas del presupuesto debe ser numérica' })
+    .int()
+    .min(1, 'El presupuesto debe ser para al menos 1 persona')
     .optional(),
   monedaBase: z.string().trim().length(3, 'Debe ser de 3 caracteres').toUpperCase().optional(),
   monedaReferencia: z.string().trim().length(3, 'Debe ser de 3 caracteres').toUpperCase().optional(),

@@ -77,16 +77,23 @@ function enrichGastoWithEventoMeta(gasto) {
 
   const rawMontoOrig = Number(gasto.montoOriginal) || 0;
   const finalCostoTotal = costoTotal && costoTotal > 0 ? costoTotal : rawMontoOrig;
-  const finalCostoPorPersona = costoPorPersona && costoPorPersona > 0
-    ? costoPorPersona
-    : (cantidadPersonas > 1 ? Number((finalCostoTotal / cantidadPersonas).toFixed(2)) : finalCostoTotal);
+  const isAlojamiento = (gasto.categoria || '').trim().toLowerCase() === 'alojamiento' || (gasto.evento?.tipo || '').trim().toLowerCase() === 'hotel';
+  const finalCostoPorPersona = isAlojamiento
+    ? finalCostoTotal
+    : (costoPorPersona && costoPorPersona > 0
+      ? costoPorPersona
+      : (cantidadPersonas > 1 ? Number((finalCostoTotal / cantidadPersonas).toFixed(2)) : finalCostoTotal));
 
   const rawCOP = Number(gasto.montoCOP) || 0;
   const rawUSD = Number(gasto.montoUSD) || 0;
   const montoTotalCOP = rawCOP;
-  const montoPorPersonaCOP = cantidadPersonas > 1 ? Math.round(rawCOP / cantidadPersonas) : rawCOP;
+  const montoPorPersonaCOP = isAlojamiento
+    ? rawCOP
+    : (cantidadPersonas > 1 ? Math.round(rawCOP / cantidadPersonas) : rawCOP);
   const montoTotalUSD = rawUSD;
-  const montoPorPersonaUSD = cantidadPersonas > 1 ? Number((rawUSD / cantidadPersonas).toFixed(2)) : rawUSD;
+  const montoPorPersonaUSD = isAlojamiento
+    ? rawUSD
+    : (cantidadPersonas > 1 ? Number((rawUSD / cantidadPersonas).toFixed(2)) : rawUSD);
 
   return {
     ...gasto,

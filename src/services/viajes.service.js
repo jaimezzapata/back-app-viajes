@@ -1,7 +1,7 @@
 const viajesRepository = require('../repositories/viajes.repository');
 const { prisma } = require('../config/prisma');
 
-function serializeViajeMeta(descripcion, origen, escalas, tipoViaje, destinosMultidestino, categoriasPresupuesto, checklist) {
+function serializeViajeMeta(descripcion, origen, escalas, tipoViaje, destinosMultidestino, categoriasPresupuesto, checklist, presupuestoPersonas) {
   const meta = {};
   if (origen) meta.origen = origen;
   if (escalas) meta.escalas = escalas;
@@ -9,6 +9,9 @@ function serializeViajeMeta(descripcion, origen, escalas, tipoViaje, destinosMul
   if (destinosMultidestino && Array.isArray(destinosMultidestino)) meta.destinosMultidestino = destinosMultidestino;
   if (categoriasPresupuesto && Array.isArray(categoriasPresupuesto)) meta.categoriasPresupuesto = categoriasPresupuesto;
   if (checklist && Array.isArray(checklist)) meta.checklist = checklist;
+  if (presupuestoPersonas !== undefined && presupuestoPersonas !== null) {
+    meta.presupuestoPersonas = Math.max(1, Math.round(Number(presupuestoPersonas) || 1));
+  }
 
   if (Object.keys(meta).length === 0) return descripcion || null;
   const metaTag = `\n<!--META:${JSON.stringify(meta)}:META-->`;
@@ -24,6 +27,7 @@ function deserializeViajeMeta(viaje) {
   let destinosMultidestino = viaje.destinosMultidestino || [];
   let categoriasPresupuesto = viaje.categoriasPresupuesto || null;
   let checklist = Array.isArray(viaje.checklist) ? viaje.checklist : null;
+  let presupuestoPersonas = viaje.presupuestoPersonas ? Math.max(1, Math.round(Number(viaje.presupuestoPersonas) || 1)) : 1;
   let descripcion = viaje.descripcion || null;
 
   if (descripcion && descripcion.includes('<!--META:')) {
@@ -37,6 +41,9 @@ function deserializeViajeMeta(viaje) {
         if (meta.destinosMultidestino) destinosMultidestino = meta.destinosMultidestino;
         if (meta.categoriasPresupuesto) categoriasPresupuesto = meta.categoriasPresupuesto;
         if (Array.isArray(meta.checklist)) checklist = meta.checklist;
+        if (meta.presupuestoPersonas !== undefined && meta.presupuestoPersonas !== null) {
+          presupuestoPersonas = Math.max(1, Math.round(Number(meta.presupuestoPersonas) || 1));
+        }
       } catch {}
       descripcion = descripcion.replace(/\n?<!--META:.*?:META-->/g, '').trim() || null;
     }
@@ -49,6 +56,7 @@ function deserializeViajeMeta(viaje) {
     escalas,
     tipoViaje,
     destinosMultidestino,
+    presupuestoPersonas,
     ...(categoriasPresupuesto ? { categoriasPresupuesto } : {}),
     ...(checklist ? { checklist } : {})
   };
@@ -87,6 +95,7 @@ class ViajesService {
       fechaInicio,
       fechaFin,
       presupuestoTotal,
+      presupuestoPersonas,
       monedaBase,
       monedaReferencia,
       monedaLocal,
@@ -105,7 +114,8 @@ class ViajesService {
       tipoViaje,
       destinosMultidestino,
       categoriasPresupuesto,
-      checklist
+      checklist,
+      presupuestoPersonas
     );
 
     // Validar de forma segura si el usuarioId es un UUID válido y existe en la base de datos
@@ -178,6 +188,9 @@ class ViajesService {
       ? data.categoriasPresupuesto
       : (data.presupuestosPorCategoria !== undefined ? data.presupuestosPorCategoria : currentMeta?.categoriasPresupuesto);
     const newChecklist = data.checklist !== undefined ? data.checklist : currentMeta?.checklist;
+    const newPresupuestoPersonas = data.presupuestoPersonas !== undefined
+      ? data.presupuestoPersonas
+      : currentMeta?.presupuestoPersonas;
     const rawDesc = data.descripcion !== undefined ? data.descripcion : currentMeta?.descripcion;
 
     const updateData = { ...data };
@@ -192,7 +205,8 @@ class ViajesService {
       newTipoViaje,
       newDestinosMultidestino,
       newCategoriasPresupuesto,
-      newChecklist
+      newChecklist,
+      newPresupuestoPersonas
     );
     delete updateData.origen;
     delete updateData.escalas;
@@ -201,6 +215,7 @@ class ViajesService {
     delete updateData.presupuestosPorCategoria;
     delete updateData.categoriasPresupuesto;
     delete updateData.checklist;
+    delete updateData.presupuestoPersonas;
 
     await viajesRepository.update(id, updateData);
 
