@@ -1,7 +1,7 @@
 const viajesRepository = require('../repositories/viajes.repository');
 const { prisma } = require('../config/prisma');
 
-function serializeViajeMeta(descripcion, origen, escalas, tipoViaje, destinosMultidestino, categoriasPresupuesto, checklist, presupuestoPersonas) {
+function serializeViajeMeta(descripcion, origen, escalas, tipoViaje, destinosMultidestino, categoriasPresupuesto, checklist, presupuestoPersonas, inyeccionesPresupuesto) {
   const meta = {};
   if (origen) meta.origen = origen;
   if (escalas) meta.escalas = escalas;
@@ -11,6 +11,9 @@ function serializeViajeMeta(descripcion, origen, escalas, tipoViaje, destinosMul
   if (checklist && Array.isArray(checklist)) meta.checklist = checklist;
   if (presupuestoPersonas !== undefined && presupuestoPersonas !== null) {
     meta.presupuestoPersonas = Math.max(1, Math.round(Number(presupuestoPersonas) || 1));
+  }
+  if (inyeccionesPresupuesto && Array.isArray(inyeccionesPresupuesto)) {
+    meta.inyeccionesPresupuesto = inyeccionesPresupuesto;
   }
 
   if (Object.keys(meta).length === 0) return descripcion || null;
@@ -28,6 +31,7 @@ function deserializeViajeMeta(viaje) {
   let categoriasPresupuesto = viaje.categoriasPresupuesto || null;
   let checklist = Array.isArray(viaje.checklist) ? viaje.checklist : null;
   let presupuestoPersonas = viaje.presupuestoPersonas ? Math.max(1, Math.round(Number(viaje.presupuestoPersonas) || 1)) : 1;
+  let inyeccionesPresupuesto = Array.isArray(viaje.inyeccionesPresupuesto) ? viaje.inyeccionesPresupuesto : [];
   let descripcion = viaje.descripcion || null;
 
   if (descripcion && descripcion.includes('<!--META:')) {
@@ -44,6 +48,9 @@ function deserializeViajeMeta(viaje) {
         if (meta.presupuestoPersonas !== undefined && meta.presupuestoPersonas !== null) {
           presupuestoPersonas = Math.max(1, Math.round(Number(meta.presupuestoPersonas) || 1));
         }
+        if (Array.isArray(meta.inyeccionesPresupuesto)) {
+          inyeccionesPresupuesto = meta.inyeccionesPresupuesto;
+        }
       } catch {}
       descripcion = descripcion.replace(/\n?<!--META:.*?:META-->/g, '').trim() || null;
     }
@@ -57,6 +64,7 @@ function deserializeViajeMeta(viaje) {
     tipoViaje,
     destinosMultidestino,
     presupuestoPersonas,
+    inyeccionesPresupuesto,
     ...(categoriasPresupuesto ? { categoriasPresupuesto } : {}),
     ...(checklist ? { checklist } : {})
   };
@@ -101,6 +109,7 @@ class ViajesService {
       monedaLocal,
       presupuestosPorCategoria,
       categoriasPresupuesto,
+      inyeccionesPresupuesto,
       checklist
     } = data;
 
@@ -115,7 +124,8 @@ class ViajesService {
       destinosMultidestino,
       categoriasPresupuesto,
       checklist,
-      presupuestoPersonas
+      presupuestoPersonas,
+      inyeccionesPresupuesto
     );
 
     // Validar de forma segura si el usuarioId es un UUID válido y existe en la base de datos
@@ -191,6 +201,9 @@ class ViajesService {
     const newPresupuestoPersonas = data.presupuestoPersonas !== undefined
       ? data.presupuestoPersonas
       : currentMeta?.presupuestoPersonas;
+    const newInyeccionesPresupuesto = data.inyeccionesPresupuesto !== undefined
+      ? data.inyeccionesPresupuesto
+      : currentMeta?.inyeccionesPresupuesto;
     const rawDesc = data.descripcion !== undefined ? data.descripcion : currentMeta?.descripcion;
 
     const updateData = { ...data };
@@ -206,7 +219,8 @@ class ViajesService {
       newDestinosMultidestino,
       newCategoriasPresupuesto,
       newChecklist,
-      newPresupuestoPersonas
+      newPresupuestoPersonas,
+      newInyeccionesPresupuesto
     );
     delete updateData.origen;
     delete updateData.escalas;
@@ -216,6 +230,7 @@ class ViajesService {
     delete updateData.categoriasPresupuesto;
     delete updateData.checklist;
     delete updateData.presupuestoPersonas;
+    delete updateData.inyeccionesPresupuesto;
 
     await viajesRepository.update(id, updateData);
 

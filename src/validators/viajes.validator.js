@@ -74,6 +74,7 @@ const createViajeSchema = z.object({
     .default('USD'),
   presupuestosPorCategoria: z.array(categoriaPresupuestoItem).optional(),
   categoriasPresupuesto: z.array(z.any()).optional().nullable(),
+  inyeccionesPresupuesto: z.array(z.any()).optional().nullable(),
   checklist: z.array(z.any()).optional().nullable()
 }).refine(data => new Date(data.fechaFin) >= new Date(data.fechaInicio), {
   message: 'La fecha de fin no puede ser anterior a la fecha de inicio',
@@ -115,6 +116,7 @@ const updateViajeSchema = z.object({
   monedaLocal: z.string().trim().length(3, 'Debe ser de 3 caracteres').toUpperCase().optional(),
   presupuestosPorCategoria: z.array(categoriaPresupuestoItem).optional(),
   categoriasPresupuesto: z.array(z.any()).optional().nullable(),
+  inyeccionesPresupuesto: z.array(z.any()).optional().nullable(),
   checklist: z.array(z.any()).optional().nullable()
 }).refine(data => {
   if (data.fechaInicio && data.fechaFin) {
